@@ -349,7 +349,7 @@ def run_backtest(strategy_type, start_date, end_date, initial_capital, top_quant
 
     # Sample weight signals
     weight_signals = pd.DataFrame({
-        'date': pd.date_range(start_date, end_date, freq='Q'),
+        'date': pd.date_range(start_date, end_date, freq='QE'),
         'AAPL': 0.5,
         'MSFT': 0.3,
         'GOOGL': 0.2
