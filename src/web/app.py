@@ -106,7 +106,8 @@ def display_quick_stats():
         with col2:
             st.metric("Cache Entries", stats.get('cache_entries', 0))
 
-        st.metric("Storage Used", ".1f")
+        storage_mb = stats.get('storage_used_mb', 0)
+        st.metric("Storage Used", f"{storage_mb:.1f} MB")
 
     except Exception as e:
         st.error(f"Could not load stats: {e}")
@@ -301,13 +302,17 @@ def show_strategy_backtesting():
             # Key metrics
             metrics_cols = st.columns(4)
             with metrics_cols[0]:
-                st.metric("Final Value", ".2f")
+                final_val = result.portfolio_values.iloc[-1] if hasattr(result, 'portfolio_values') and len(result.portfolio_values) > 0 else 0
+                st.metric("Final Value", f"${final_val:,.2f}")
             with metrics_cols[1]:
-                st.metric("Total Return", ".2%")
+                total_ret = result.metrics.get('total_return', 0)
+                st.metric("Total Return", f"{total_ret:.2%}")
             with metrics_cols[2]:
-                st.metric("Annual Return", ".2%")
+                annual_ret = result.metrics.get('annual_return', 0)
+                st.metric("Annual Return", f"{annual_ret:.2%}")
             with metrics_cols[3]:
-                st.metric("Sharpe Ratio", ".2f")
+                sharpe = result.metrics.get('sharpe_ratio', 0)
+                st.metric("Sharpe Ratio", f"{sharpe:.2f}")
 
             # Performance chart
             if hasattr(result, 'portfolio_values'):
@@ -322,7 +327,7 @@ def show_strategy_backtesting():
             st.subheader("Detailed Metrics")
             metrics_df = pd.DataFrame({
                 'Metric': list(result.metrics.keys()),
-                'Value': [".4f" for v in result.metrics.values()]
+                'Value': [f"{v:.4f}" for v in result.metrics.values()]
             })
             st.dataframe(metrics_df)
 
@@ -391,11 +396,14 @@ def show_live_trading():
 
                         col1, col2, col3 = st.columns(3)
                         with col1:
-                            st.metric("Portfolio Value", ".2f")
+                            pv = float(account_info.get('portfolio_value', 0))
+                            st.metric("Portfolio Value", f"${pv:,.2f}")
                         with col2:
-                            st.metric("Cash", ".2f")
+                            cash = float(account_info.get('cash', 0))
+                            st.metric("Cash", f"${cash:,.2f}")
                         with col3:
-                            st.metric("Buying Power", ".2f")
+                            bp = float(account_info.get('buying_power', 0))
+                            st.metric("Buying Power", f"${bp:,.2f}")
 
                         # Positions table
                         if positions:
@@ -505,13 +513,13 @@ def show_portfolio_analysis():
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Return", ".2%")
+            st.metric("Total Return", f"{total_return:.2%}")
         with col2:
-            st.metric("Annual Return", ".2%")
+            st.metric("Annual Return", f"{annual_return:.2%}")
         with col3:
-            st.metric("Volatility", ".2%")
+            st.metric("Volatility", f"{volatility:.2%}")
         with col4:
-            st.metric("Sharpe Ratio", ".2f")
+            st.metric("Sharpe Ratio", f"{sharpe:.2f}")
 
     with tab2:
         st.subheader("Risk Analysis")
