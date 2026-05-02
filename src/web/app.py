@@ -131,7 +131,7 @@ def show_overview():
     # Recent activity
     st.subheader("Recent Activity")
     activity_data = pd.DataFrame({
-        'Time': pd.date_range('2024-01-01 09:00', periods=5, freq='1H'),
+        'Time': pd.date_range('2024-01-01 09:00', periods=5, freq='1h'),
         'Action': ['Strategy Execution', 'Portfolio Rebalance', 'Data Update', 'Order Filled', 'Strategy Backtest'],
         'Status': ['Success', 'Success', 'Success', 'Success', 'Completed'],
         'Details': ['ML Strategy executed', 'Quarterly rebalance', 'S&P 500 data updated', 'AAPL order filled', 'Backtest completed']
