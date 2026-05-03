@@ -13,7 +13,10 @@ const width = 1120;
 const equityHeight = 360;
 const drawdownHeight = 120;
 const groupsHeight = 180;
-const margin = { top: 24, right: 32, bottom: 34, left: 72 };
+/** Room for Y-axis tick labels (multiplier + $); keep text inside viewBox. */
+const margin = { top: 24, right: 32, bottom: 34, left: 118 };
+/** Group timeline: reserve left column for row titles so labels sit clear of bar tracks. */
+const GROUP_LABEL_GUTTER = 172;
 
 const regimeColors: Record<string, string> = {
   risk_on: "rgba(205, 221, 255, 0.08)",
@@ -83,6 +86,15 @@ function formatUsd(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 }
 
+/** Shorter axis labels so two-value ticks stay on one line within the left margin. */
+function formatUsdAxis(value: number) {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 10_000) return `$${Math.round(value / 1000)}k`;
+  if (abs >= 1000) return `$${(value / 1000).toFixed(1)}k`;
+  return formatUsd(value);
+}
+
 function seriesValue(point: EquityPoint, key: SeriesKey): number | null {
   if (key === "strategy") return point.strategy;
   const v = point[key];
@@ -108,6 +120,7 @@ export function InteractiveBacktestChart({ data }: Props) {
         times: [] as number[],
         xDomain: [0, 1] as [number, number],
         yTicks: [] as number[],
+        groupX: () => GROUP_LABEL_GUTTER,
         empty: true as const,
       };
     }
@@ -130,6 +143,13 @@ export function InteractiveBacktestChart({ data }: Props) {
       margin.top,
     );
     const yTicks = equityTickValues(yMin, yMax);
+    const equityPlotWidth = width - margin.right - margin.left;
+    const groupPlotWidth = width - margin.right - GROUP_LABEL_GUTTER;
+    const groupX = (date: string) => {
+      const px = x(toDateValue(date));
+      const frac = (px - margin.left) / equityPlotWidth;
+      return GROUP_LABEL_GUTTER + frac * groupPlotWidth;
+    };
     return {
       x,
       y,
@@ -138,6 +158,7 @@ export function InteractiveBacktestChart({ data }: Props) {
       xDomain: [tMin, tMax] as [number, number],
       yDomain: [yMin, yMax] as [number, number],
       yTicks,
+      groupX,
       empty: false as const,
     };
   }, [data]);
@@ -283,12 +304,17 @@ export function InteractiveBacktestChart({ data }: Props) {
                     strokeOpacity="0.06"
                   />
                   <text
-                    x={margin.left - 8}
+                    x={margin.left - 10}
                     y={geometry.y(tick) + 4}
                     textAnchor="end"
-                    className="fill-silver text-[11px]"
+                    className="fill-silver text-[10px] leading-tight"
                   >
-                    {tick.toFixed(2)}× · {formatUsd(tick * initialCapital)}
+                    <tspan x={margin.left - 10} dy="0">
+                      {tick.toFixed(2)}×
+                    </tspan>
+                    <tspan x={margin.left - 10} dy="11" className="fill-silver/85">
+                      {formatUsdAxis(tick * initialCapital)}
+                    </tspan>
                   </text>
                 </g>
               ))}
@@ -378,20 +404,35 @@ export function InteractiveBacktestChart({ data }: Props) {
           </g>
 
           <g transform={`translate(0 ${equityHeight + drawdownHeight})`}>
+            {!geometry.empty ? (
+              <line
+                x1={GROUP_LABEL_GUTTER}
+                x2={GROUP_LABEL_GUTTER}
+                y1={12}
+                y2={groupsHeight - 18}
+                stroke="#ededf3"
+                strokeOpacity="0.08"
+              />
+            ) : null}
             {groups.map((group, groupIndex) => {
               const y = 30 + groupIndex * 45;
               const rows = data.group_timeline.filter((item) => item.group === group && item.held_stocks.length > 0);
               return (
                 <g key={group}>
-                  <text x="12" y={y + 12} className="fill-silver text-[12px]">
+                  <text
+                    x={14}
+                    y={y + 12}
+                    className="fill-silver text-[12px]"
+                    textAnchor="start"
+                  >
                     {group}
                   </text>
                   {rows.map((row) => {
-                    const x0 = geometry.x(toDateValue(row.date));
+                    const x0 = geometry.groupX(row.date);
                     const next = data.group_timeline.find(
                       (candidate) => candidate.group === group && toDateValue(candidate.date) > toDateValue(row.date),
                     );
-                    const x1 = next ? geometry.x(toDateValue(next.date)) : x0 + 6;
+                    const x1 = next ? geometry.groupX(next.date) : x0 + 6;
                     return (
                       <rect
                         key={`${group}-${row.date}`}
@@ -409,7 +450,7 @@ export function InteractiveBacktestChart({ data }: Props) {
                 </g>
               );
             })}
-            <text x="12" y="166" className="fill-silver text-[12px]">
+            <text x={GROUP_LABEL_GUTTER + 4} y="166" className="fill-silver text-[12px]">
               Hover bars for selected stocks
             </text>
           </g>
