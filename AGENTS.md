@@ -28,6 +28,16 @@ Before telling the user that backend or frontend work is **done**, run checks so
 
 Do **not** claim the UI “should work” without at least **frontend build success** when TS/React changed. Fix failures before ending the turn.
 
+### Mandatory: visual artifacts for UI changes
+
+Whenever you change anything the user **sees** (`frontend/` components, pages, styles, chart SVG, or API fields that only affect the chart/report UI), you **must** before ending the turn:
+
+1. **`./scripts/restart-dev-stack.sh`** (so the running app matches the code).
+2. **`./scripts/capture-results-ui.sh`** with output under **`/opt/cursor/artifacts/`** when that path exists, otherwise **`/tmp/`** (example: `./scripts/capture-results-ui.sh /opt/cursor/artifacts/results-ui.png`).
+3. Attach that **PNG** in the final response (or reference its absolute path). If headless Chrome fails, use **`RecordScreen`** (Desktop) for a short clip of `/results`, or paste the **terminal error** from the capture script — do not skip evidence silently.
+
+This is required so the user does not have to ask for proof that the change is visible.
+
 ### Environment
 
 - **Python 3.11+** is required (`python_requires=">=3.11"` in `setup.py`).
@@ -62,6 +72,7 @@ Agents cannot click “refresh” in the user’s browser; after restart, **tell
 | ------------------- | ---------------------------------------------------------------------------------------------- |
 | **Restart API + Next** | `./scripts/restart-dev-stack.sh` (after backend/frontend changes; `--clean-next` if Next is broken) |
 | **Verify frontend** | `./scripts/verify-frontend.sh` (required before saying frontend work is complete) |
+| **Screenshot /results** | `./scripts/capture-results-ui.sh /opt/cursor/artifacts/results-ui.png` (after restart; required for visible UI changes) |
 | Install deps        | `pip install -r requirements.txt` (skip finnhub line) then `pip install finnhub-python pyyaml` |
 | Backtest            | `./deploy.sh --strategy adaptive_rotation --mode backtest --start 2024-01-01 --end 2024-12-31` |
 | Single signal       | `./deploy.sh --strategy adaptive_rotation --mode single --date 2024-12-31`                     |

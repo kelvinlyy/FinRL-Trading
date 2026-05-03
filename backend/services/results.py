@@ -24,6 +24,9 @@ GROUP_MEMBERS = {
 # should only mark the top-N groups by *total* weight as "activated".
 MAX_TIMELINE_ACTIVE_GROUPS = 2
 
+# First chart date where at least this fraction of capital is in the top-2 groups (excludes "dust").
+_MIN_MEANINGFUL_GROUP_INVESTED = 0.06
+
 
 @dataclass(frozen=True)
 class BacktestRun:
@@ -231,6 +234,32 @@ def _group_timeline(weights_df: pd.DataFrame) -> list[dict[str, Any]]:
     return rows
 
 
+def _first_meaningful_group_holdings_date(weights_df: pd.DataFrame) -> str | None:
+    """
+    First rebalance date where the top two groups (by summed member weight) hold at least
+    _MIN_MEANINGFUL_GROUP_INVESTED of the book together. Avoids treating tiny residual weights
+    as "activation" on the first row.
+    """
+    df = _normalize_weights_frame(weights_df)
+    asset_cols = _asset_columns(df)
+    lookup = _canonical_symbol_lookup(asset_cols)
+    for _, row in df.iterrows():
+        group_totals: dict[str, float] = {}
+        for group, symbols in GROUP_MEMBERS.items():
+            total = 0.0
+            for symbol in symbols:
+                col = lookup.get(symbol.upper().strip())
+                if col is None:
+                    continue
+                total += _to_float(row.get(col, 0))
+            group_totals[group] = total
+        ranked = sorted(group_totals.values(), reverse=True)
+        top2 = sum(ranked[:MAX_TIMELINE_ACTIVE_GROUPS]) if ranked else 0.0
+        if top2 >= _MIN_MEANINGFUL_GROUP_INVESTED:
+            return pd.to_datetime(row["date"]).strftime("%Y-%m-%d")
+    return None
+
+
 def read_summary(run: BacktestRun) -> list[dict[str, Any]]:
     return _read_csv(run.summary_path)
 
@@ -276,6 +305,8 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
             "run": run_metadata(run),
             "initial_capital": 1000.0,
             "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
+            "weights_first_date": None,
+            "first_meaningful_group_holdings_date": None,
             "equity": [],
             "drawdown": [],
             "group_timeline": [],
@@ -305,10 +336,15 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
         for idx, value in enumerate(drawdown)
     ]
 
+    weights_first = pd.to_datetime(weights_df.iloc[0]["date"]).strftime("%Y-%m-%d")
+    first_meaningful = _first_meaningful_group_holdings_date(weights_df)
+
     return {
         "run": run_metadata(run),
         "initial_capital": 1000.0,
         "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
+        "weights_first_date": weights_first,
+        "first_meaningful_group_holdings_date": first_meaningful,
         "equity": equity_rows,
         "drawdown": drawdown_rows,
         "regimes": _regime_spans(equity_rows),

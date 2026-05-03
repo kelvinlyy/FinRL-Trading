@@ -63,6 +63,13 @@ export type VisualizationData = {
   initial_capital?: number;
   /** Cap on simultaneous group lanes (matches Adaptive Rotation max_active_groups). */
   max_timeline_active_groups?: number;
+  /** First date row in the weights CSV (YYYY-MM-DD). */
+  weights_first_date?: string | null;
+  /**
+   * First date where top-2 groups hold a meaningful fraction of the book (from API).
+   * Used for the grey "before activation" band when early rows are mostly cash/dust.
+   */
+  first_meaningful_group_holdings_date?: string | null;
   equity: EquityPoint[];
   drawdown: DrawdownPoint[];
   regimes: RegimeBand[];

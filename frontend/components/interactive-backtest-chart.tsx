@@ -374,10 +374,17 @@ export function InteractiveBacktestChart({ data }: Props) {
     return best;
   }, [groupTimeline]);
 
+  /** End of grey band: API "meaningful" deployment date, else first capped lane date. */
+  const meaningfulActivationEnd = useMemo(
+    () => data.first_meaningful_group_holdings_date ?? firstGroupActivationDate,
+    [data.first_meaningful_group_holdings_date, firstGroupActivationDate],
+  );
+
+  const MIN_PRE_ACTIVATION_PX = 72;
+
   /**
-   * Period before the first weights row where any group shows holdings.
-   * Uses run.start when present so the band can appear when the backtest window starts before
-   * the first rebalance that produced group allocations (common when equity starts at run start).
+   * Period before meaningful group deployment (top-2 groups hold enough weight — see API).
+   * Also uses run.start when before first equity date.
    */
   const preActivationBand = useMemo(() => {
     if (geometry.empty || !data.equity.length) return null;
@@ -390,7 +397,7 @@ export function InteractiveBacktestChart({ data }: Props) {
     const xRightEq = width - margin.right;
     const xRightGrp = width - margin.right;
 
-    if (!firstGroupActivationDate) {
+    if (!meaningfulActivationEnd) {
       const wEq = xRightEq - margin.left;
       const wGrp = xRightGrp - GROUP_LABEL_GUTTER;
       if (wEq < 2 && wGrp < 2) return null;
@@ -398,37 +405,47 @@ export function InteractiveBacktestChart({ data }: Props) {
         equity: { x: margin.left, width: Math.max(0, wEq) },
         drawdown: { x: margin.left, width: Math.max(0, wEq) },
         groups: { x: GROUP_LABEL_GUTTER, width: Math.max(0, wGrp) },
-        caption: "No group activation in weights export for this run.",
+        caption: "No meaningful group deployment in weights export for this run.",
         title:
-          "Grey: no group lane data in portfolio weights CSV. Equity/drawdown may still use this date range.",
+          "Grey: no date where top groups hold a meaningful fraction of the book. Equity may still plot.",
       };
     }
 
-    const tAct = toDateValue(firstGroupActivationDate);
+    const tAct = toDateValue(meaningfulActivationEnd);
     const tStart = toDateValue(bandStartDate);
     if (tAct <= tStart) return null;
 
-    const xEndEq = geometry.x(tAct);
-    const xEndGrp = geometry.groupX(firstGroupActivationDate);
+    let xEndEq = geometry.x(toDateValue(meaningfulActivationEnd));
+    let xEndGrp = geometry.groupX(meaningfulActivationEnd);
 
-    const x0EqRaw = geometry.x(toDateValue(bandStartDate));
-    const x0GrpRaw = geometry.groupX(bandStartDate);
-    const x0Eq = Math.max(margin.left, x0EqRaw);
-    const x0Grp = Math.max(GROUP_LABEL_GUTTER, x0GrpRaw);
+    let x0EqRaw = geometry.x(toDateValue(bandStartDate));
+    let x0GrpRaw = geometry.groupX(bandStartDate);
+    let x0Eq = Math.max(margin.left, x0EqRaw);
+    let x0Grp = Math.max(GROUP_LABEL_GUTTER, x0GrpRaw);
 
-    const wEq = Math.max(0, xEndEq - x0Eq);
-    const wGrp = Math.max(0, xEndGrp - x0Grp);
+    let wEq = Math.max(0, xEndEq - x0Eq);
+    let wGrp = Math.max(0, xEndGrp - x0Grp);
+    if (wEq < MIN_PRE_ACTIVATION_PX && xEndEq > margin.left) {
+      x0Eq = Math.max(margin.left, xEndEq - MIN_PRE_ACTIVATION_PX);
+      wEq = xEndEq - x0Eq;
+    }
+    if (wGrp < MIN_PRE_ACTIVATION_PX && xEndGrp > GROUP_LABEL_GUTTER) {
+      x0Grp = Math.max(GROUP_LABEL_GUTTER, xEndGrp - MIN_PRE_ACTIVATION_PX);
+      wGrp = xEndGrp - x0Grp;
+    }
     if (wEq < 2 && wGrp < 2) return null;
 
     const runLabel = runStart ? formatDate(runStart) : "—";
+    const wfd = data.weights_first_date;
+    const wfdNote = wfd ? ` Weights CSV starts ${formatDate(wfd)}.` : "";
     return {
       equity: { x: x0Eq, width: wEq },
       drawdown: { x: x0Eq, width: wEq },
       groups: { x: x0Grp, width: wGrp },
-      caption: `Shaded: before first group activation (${formatDate(firstGroupActivationDate)}). Run window starts ${runLabel}.`,
-      title: `No activated-group weights in artifact rows before ${formatDate(firstGroupActivationDate)}. Equity curve may still start at ${formatDate(eq0)}.`,
+      caption: `Grey: before meaningful group deployment (${formatDate(meaningfulActivationEnd)}). Chart from ${formatDate(eq0)}; run ${runLabel}.${wfdNote}`,
+      title: `Shaded until top-two groups hold meaningful weight (${formatDate(meaningfulActivationEnd)}). First lane tickers may appear earlier on dust rows.${wfdNote}`,
     };
-  }, [geometry, data.equity, data.run?.start, firstGroupActivationDate]);
+  }, [geometry, data.equity, data.run?.start, data.weights_first_date, meaningfulActivationEnd]);
 
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];
