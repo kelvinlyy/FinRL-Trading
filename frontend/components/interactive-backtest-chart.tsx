@@ -168,12 +168,11 @@ function enforceTimelineMaxGroups(timeline: GroupActivation[], maxAllowed: numbe
  * Merge rebalance rows into contiguous runs along the **equity** date index (same cadence as
  * the portfolio weights CSV). Uses consecutive equity rows, not sparse timeline dates.
  *
- * Important: we do **not** extend the last segment to `chartEnd`. Doing so made every group
- * that was ever active paint a bar through the entire chart end (often all three lanes).
+ * Segment bounds stay on actual rebalance dates only — do not stretch first segment to chart
+ * start or last to chart end (that falsely showed three lanes active at the edges).
  */
 function buildGroupActivationSegments(
   timeline: GroupActivation[],
-  chartStart: string,
   groupName: string,
   equityDates: string[],
 ): GroupSegment[] {
@@ -214,9 +213,10 @@ function buildGroupActivationSegments(
   }
   flushRun();
 
-  if (segments.length && toDateValue(segments[0].start) > toDateValue(chartStart)) {
-    segments[0] = { ...segments[0], start: chartStart };
-  }
+  // Do **not** extend `start` to `chartStart`. Doing so made every group's first bar begin at
+  // the chart's left edge even when that group had no holdings until a later rebalance — so up
+  // to three lanes looked "on" from day one. Segment start stays the first date this group has
+  // holdings in the capped timeline.
   return segments;
 }
 
@@ -352,24 +352,17 @@ export function InteractiveBacktestChart({ data }: Props) {
   const totalHeight = equityHeight + drawdownHeight + groupsHeight;
   const xTicks = data.equity.filter((_, index) => index % Math.ceil(data.equity.length / 6) === 0);
 
-  const chartDateRange = useMemo(() => {
-    const eq = data.equity;
-    if (!eq.length) return { start: "", end: "" };
-    return { start: eq[0].date, end: eq[eq.length - 1].date };
-  }, [data.equity]);
-
   const equityDatesOrdered = useMemo(() => data.equity.map((p) => p.date), [data.equity]);
 
   const groupActivationSegments = useMemo(() => {
-    const { start } = chartDateRange;
-    if (!start || !equityDatesOrdered.length) return {} as Record<string, GroupSegment[]>;
+    if (!equityDatesOrdered.length) return {} as Record<string, GroupSegment[]>;
     return Object.fromEntries(
       groups.map((g) => [
         g,
-        buildGroupActivationSegments(groupTimeline, start, g, equityDatesOrdered),
+        buildGroupActivationSegments(groupTimeline, g, equityDatesOrdered),
       ]),
     ) as Record<string, GroupSegment[]>;
-  }, [groupTimeline, chartDateRange.start, equityDatesOrdered]);
+  }, [groupTimeline, equityDatesOrdered]);
 
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];
