@@ -16,7 +16,7 @@ FastAPI service that exposes **read-only** Adaptive Rotation backtest artifacts 
 ## Architecture
 
 ```
-backend/
+apps/backend/
 ├── main.py                 # FastAPI app, CORS, mounts results router + /artifacts static
 ├── api/
 │   └── routes_results.py   # REST routes under /api/results
@@ -57,7 +57,7 @@ backend/
 ### Prerequisites
 
 - Python **3.11+**
-- Repository root on `PYTHONPATH` so `backend` and `src` resolve (`PYTHONPATH=/path/to/repo:/path/to/repo/src`).
+- Repository **`apps/`** directory on `PYTHONPATH` so the `backend` package and `src` resolve (`PYTHONPATH=/path/to/repo/apps:/path/to/repo:/path/to/repo/src`).
 - Optional: Adaptive Rotation artifacts already generated under `src/strategies/output/weights/adaptive_rotation/` (otherwise `/api/results` may return an empty list).
 
 ### Install
@@ -74,7 +74,7 @@ pip install finnhub-python pyyaml fastapi uvicorn
 
 ```bash
 cd /path/to/repo
-PYTHONPATH=/path/to/repo:/path/to/repo/src \
+PYTHONPATH=/path/to/repo/apps:/path/to/repo:/path/to/repo/src \
   python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 

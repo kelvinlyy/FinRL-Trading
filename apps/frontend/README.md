@@ -25,7 +25,7 @@ Reference mood: [Mercury style – Refero](https://styles.refero.design/) (dark 
 ## Architecture
 
 ```
-frontend/
+apps/frontend/
 ├── app/                      # Next.js App Router
 │   ├── layout.tsx            # Root layout, fonts, globals
 │   ├── page.tsx              # Command / home
@@ -69,12 +69,12 @@ frontend/
 ### Prerequisites
 
 - **Node.js 18+** (Next 15.x compatible with the version pinned in `package.json`).
-- Backend running (see `../backend/README.md`) if you want real runs and charts; otherwise the API client may fall back to empty or minimal data depending on `lib/api.ts` behavior.
+- Backend running (see `apps/backend/README.md`) if you want real runs and charts; otherwise the API client may fall back to empty or minimal data depending on `lib/api.ts` behavior.
 
 ### Install
 
 ```bash
-cd frontend
+cd apps/frontend
 npm install
 ```
 
@@ -115,7 +115,7 @@ npm run lint
 
 | Issue                                     | Hint                                                                                                                                                          |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **500** / `Cannot find module './NNN.js'` | Stale `.next` build output. Run **`npm run clean`**, then **`npm run build`**, and restart the dev or production server. Or delete `frontend/.next` manually. |
+| **500** / `Cannot find module './NNN.js'` | Stale `.next` build output. Run **`npm run clean`**, then **`npm run build`**, and restart the dev or production server. Or delete `apps/frontend/.next` manually. |
 | Group timeline: **three lanes** at **start** or **end** | Avoid stretching segment dates to the chart edges (fixed in `interactive-backtest-chart.tsx`). Bars begin where each group first has holdings after the max-2 cap. Restart after pull; hard-refresh. |
 | Empty results list                        | Run Adaptive Rotation backtest so artifacts exist under `src/strategies/output/weights/adaptive_rotation/`, or check backend logs.                            |
 | Chart missing / failed fetch              | Confirm `GET /api/results/{id}/visualization` returns 200; CORS and `NEXT_PUBLIC_API_BASE_URL` must match how you open the site (`localhost` vs `127.0.0.1`). |

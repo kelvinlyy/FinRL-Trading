@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restart FastAPI (8000) + Next.js dev (3000) after backend/frontend changes.
+# Restart FastAPI (8000) + Next.js dev (3000) after apps/backend or apps/frontend changes.
 # Usage: ./scripts/restart-dev-stack.sh [--clean-next]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,18 +22,18 @@ pkill -f '[n]ext-server' 2>/dev/null || true
 sleep 2
 
 if "$CLEAN_NEXT"; then
-  echo "[restart-dev-stack] Removing frontend/.next ..."
-  rm -rf "$ROOT/frontend/.next"
+  echo "[restart-dev-stack] Removing apps/frontend/.next ..."
+  rm -rf "$ROOT/apps/frontend/.next"
 fi
 
 echo "[restart-dev-stack] Starting uvicorn on :8000 ..."
-PYTHONPATH="$ROOT:$ROOT/src" nohup python3 -m uvicorn backend.main:app \
+PYTHONPATH="$ROOT/apps:$ROOT:$ROOT/src" nohup python3 -m uvicorn backend.main:app \
   --host 0.0.0.0 --port 8000 --reload \
   > /tmp/finrl-uvicorn.log 2>&1 &
 echo "  pid $!  log /tmp/finrl-uvicorn.log"
 
 echo "[restart-dev-stack] Starting Next.js dev on :3000 ..."
-cd "$ROOT/frontend"
+cd "$ROOT/apps/frontend"
 nohup npm run dev > /tmp/finrl-next.log 2>&1 &
 echo "  pid $!  log /tmp/finrl-next.log"
 

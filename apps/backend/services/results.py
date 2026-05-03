@@ -8,7 +8,8 @@ from typing import Any
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# apps/backend/services/ -> repo root
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RESULTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
 DATA_DIR = PROJECT_ROOT / "data/fmp_daily"
 RESULT_RE = re.compile(r"enhanced_backtest_(?P<start>.+)_to_(?P<end>.+)\.png$")

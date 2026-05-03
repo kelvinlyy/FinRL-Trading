@@ -1,8 +1,14 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.api.routes_results import router as results_router
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_ARTIFACTS_DIR = _REPO_ROOT / "src/strategies/output/weights/adaptive_rotation"
+_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 app = FastAPI(
@@ -20,7 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(results_router)
-app.mount("/artifacts", StaticFiles(directory="src/strategies/output/weights/adaptive_rotation"), name="artifacts")
+app.mount("/artifacts", StaticFiles(directory=str(_ARTIFACTS_DIR)), name="artifacts")
 
 
 @app.get("/health")
