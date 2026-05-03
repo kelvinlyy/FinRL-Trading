@@ -6,6 +6,16 @@
 
 FinRL-X is a Python-based quantitative trading platform. The core development workflow involves backtesting strategies, running the Streamlit dashboard, and (optionally) paper trading via Alpaca.
 
+### Mandatory: restart dev servers after code changes
+
+Whenever you **edit** `backend/`, `frontend/`, `scripts/restart-dev-stack.sh`, or anything that affects the running API or Next app, you **must** before finishing the turn:
+
+1. Run **`./scripts/restart-dev-stack.sh`** from the repo root (use **`--clean-next`** if the user reported Next 500 / missing chunk errors).
+2. Confirm smoke checks pass (`GET /docs` and `GET /` return 200 in script output); if not, fix and retry.
+3. Tell the user to **hard-refresh** the browser on `http://localhost:3000` — you cannot refresh their tab for them.
+
+Skipping this step is not acceptable; the user should not have to ask for a restart separately.
+
 ### Environment
 
 - **Python 3.11+** is required (`python_requires=">=3.11"` in `setup.py`).
@@ -15,7 +25,7 @@ FinRL-X is a Python-based quantitative trading platform. The core development wo
 
 ### Next.js + FastAPI stack (command center)
 
-After **any** change that affects `backend/`, `frontend/`, or strategy artifacts read by the API, agents should **restart both servers** and assume the user will **hard-refresh** the browser (Ctrl+Shift+R / Empty Cache).
+This section expands on **Mandatory: restart dev servers** above. Same rule: **always** restart after relevant edits using the script below.
 
 **One-shot restart** (from repo root):
 
@@ -38,6 +48,7 @@ Agents cannot click “refresh” in the user’s browser; after restart, **tell
 
 | Task                | Command                                                                                        |
 | ------------------- | ---------------------------------------------------------------------------------------------- |
+| **Restart API + Next** | `./scripts/restart-dev-stack.sh` (after backend/frontend changes; `--clean-next` if Next is broken) |
 | Install deps        | `pip install -r requirements.txt` (skip finnhub line) then `pip install finnhub-python pyyaml` |
 | Backtest            | `./deploy.sh --strategy adaptive_rotation --mode backtest --start 2024-01-01 --end 2024-12-31` |
 | Single signal       | `./deploy.sh --strategy adaptive_rotation --mode single --date 2024-12-31`                     |
