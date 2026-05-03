@@ -5,6 +5,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[restart-dev-stack] ERROR: npm not found. Install Node.js 18+ (https://nodejs.org/) so Next.js can start." >&2
+  echo "  Debian/Ubuntu: sudo apt install nodejs npm" >&2
+  exit 1
+fi
+
 CLEAN_NEXT=false
 for arg in "$@"; do
   case "$arg" in
@@ -34,11 +40,21 @@ echo "  pid $!  log /tmp/finrl-uvicorn.log"
 
 echo "[restart-dev-stack] Starting Next.js dev on :3000 ..."
 cd "$ROOT/apps/frontend"
+if [[ ! -d node_modules ]]; then
+  echo "[restart-dev-stack] ERROR: apps/frontend/node_modules missing. From the repo root run:" >&2
+  echo "  cd apps/frontend && npm ci" >&2
+  exit 1
+fi
 nohup npm run dev > /tmp/finrl-next.log 2>&1 &
 echo "  pid $!  log /tmp/finrl-next.log"
 
 sleep 4
 echo "[restart-dev-stack] Smoke checks..."
 curl -s -o /dev/null -w "  GET /docs → %{http_code}\n" http://127.0.0.1:8000/docs || echo "  backend not ready yet"
-curl -s -o /dev/null -w "  GET / → %{http_code}\n" http://127.0.0.1:3000/ || echo "  frontend not ready yet"
+fe_code="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ || true)"
+echo "  GET / → ${fe_code}"
+if [[ "${fe_code}" != "200" ]]; then
+  echo "[restart-dev-stack] Frontend did not respond with 200. Last lines of /tmp/finrl-next.log:" >&2
+  tail -n 30 /tmp/finrl-next.log >&2 || true
+fi
 echo "[restart-dev-stack] Done. Hard-refresh the browser (empty cache) on http://localhost:3000"
