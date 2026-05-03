@@ -121,6 +121,49 @@ function sameHeldStocks(a: string[], b: string[]) {
   return JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 }
 
+const DEFAULT_MAX_ACTIVE_GROUPS = 2;
+
+/** Hard cap: never show more than `maxAllowed` groups with holdings on the same date (strategy rule). */
+function enforceTimelineMaxGroups(timeline: GroupActivation[], maxAllowed: number): GroupActivation[] {
+  const cap = Math.max(1, Math.floor(maxAllowed));
+  const byDate = new Map<string, GroupActivation[]>();
+  for (const row of timeline) {
+    const list = byDate.get(row.date) ?? [];
+    list.push(row);
+    byDate.set(row.date, list);
+  }
+
+  const out: GroupActivation[] = [];
+  for (const [, rows] of [...byDate.entries()].sort((a, b) => toDateValue(a[0]) - toDateValue(b[0]))) {
+    const withHoldings = rows.filter((r) => r.held_stocks.length > 0);
+    if (withHoldings.length <= cap) {
+      out.push(...rows);
+      continue;
+    }
+    const ranked = [...withHoldings].sort((a, b) => {
+      const wa = a.group_weight_total ?? 0;
+      const wb = b.group_weight_total ?? 0;
+      if (wb !== wa) return wb - wa;
+      return a.group.localeCompare(b.group);
+    });
+    const keep = new Set(ranked.slice(0, cap).map((r) => r.group));
+    for (const row of rows) {
+      if (row.held_stocks.length === 0) {
+        out.push(row);
+      } else if (keep.has(row.group)) {
+        out.push(row);
+      } else {
+        out.push({
+          ...row,
+          active: false,
+          held_stocks: [],
+        });
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Merge rebalance rows into contiguous runs along the **equity** date index (same cadence as
  * the portfolio weights CSV). Uses consecutive equity rows, not sparse timeline dates.
@@ -197,12 +240,18 @@ function timelineBarRightX(
 
 export function InteractiveBacktestChart({ data }: Props) {
   const initialCapital = data.initial_capital ?? 1000;
+  const maxTimelineGroups = data.max_timeline_active_groups ?? DEFAULT_MAX_ACTIVE_GROUPS;
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [enabled, setEnabled] = useState<Record<SeriesKey, boolean>>({
     strategy: true,
     SPY: true,
     QQQ: true,
   });
+
+  const groupTimeline = useMemo(
+    () => enforceTimelineMaxGroups(data.group_timeline, maxTimelineGroups),
+    [data.group_timeline, maxTimelineGroups],
+  );
 
   const drawdownSeries = useMemo((): DrawdownPoint[] => {
     const eq = data.equity;
@@ -317,10 +366,10 @@ export function InteractiveBacktestChart({ data }: Props) {
     return Object.fromEntries(
       groups.map((g) => [
         g,
-        buildGroupActivationSegments(data.group_timeline, start, g, equityDatesOrdered),
+        buildGroupActivationSegments(groupTimeline, start, g, equityDatesOrdered),
       ]),
     ) as Record<string, GroupSegment[]>;
-  }, [data.group_timeline, chartDateRange.start, equityDatesOrdered]);
+  }, [groupTimeline, chartDateRange.start, equityDatesOrdered]);
 
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];

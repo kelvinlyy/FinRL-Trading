@@ -212,6 +212,7 @@ def _group_timeline(weights_df: pd.DataFrame) -> list[dict[str, Any]]:
 
         for group, symbols in GROUP_MEMBERS.items():
             held: list[str] = []
+            g_total = group_totals.get(group, 0.0)
             if group in active_group_names:
                 for symbol in symbols:
                     col = lookup.get(symbol.upper().strip())
@@ -224,6 +225,8 @@ def _group_timeline(weights_df: pd.DataFrame) -> list[dict[str, Any]]:
                 "group": group,
                 "active": bool(held),
                 "held_stocks": held,
+                # Sum of position weights in this group (for UI tie-break / hard cap)
+                "group_weight_total": round(g_total, 8),
             })
     return rows
 
@@ -272,6 +275,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
         return {
             "run": run_metadata(run),
             "initial_capital": 1000.0,
+            "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
             "equity": [],
             "drawdown": [],
             "group_timeline": [],
@@ -304,6 +308,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
     return {
         "run": run_metadata(run),
         "initial_capital": 1000.0,
+        "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
         "equity": equity_rows,
         "drawdown": drawdown_rows,
         "regimes": _regime_spans(equity_rows),

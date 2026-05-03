@@ -28,7 +28,7 @@ backend/
 
 1. Strategy run writes `enhanced_backtest_{start}_to_{end}.png`, `ars_portfolio_weights_*.csv`, `backtest_*.csv`, `trade_log_*.csv`, etc.
 2. `list_runs()` scans PNG filenames to build stable `run_id` values (`{start}_to_{end}`).
-3. Clients request metadata, tabular data, static chart bytes, or **`/{run_id}/visualization`** — a JSON bundle for the interactive chart (equity curve, drawdown, regimes, group timeline, trades, `initial_capital`).
+3. Clients request metadata, tabular data, static chart bytes, or `**/{run_id}/visualization`** — a JSON bundle for the interactive chart (equity curve, drawdown, regimes, group timeline, trades, `initial_capital`).
 
 **Dependencies:** Python 3.11+, FastAPI, Uvicorn, Pandas. Price CSVs for benchmarks live under `data/fmp_daily/` when computing equity multipliers in visualization.
 
@@ -36,15 +36,17 @@ backend/
 
 ## Functionality
 
-| Area | Description |
-|------|-------------|
-| **Run catalog** | Lists saved runs with labels, date range, artifact URLs, row counts. |
-| **Run metadata** | Single-run summary: links to chart, trade log, summary, weights, visualization JSON. |
-| **Summary CSV** | Weekly / periodic metrics from `backtest_*.csv`. |
-| **Trade log** | Rows from `trade_log_*.csv`. |
-| **Weights** | Raw portfolio weights CSV for inspection. |
-| **Chart PNG** | Serves the matplotlib-generated `enhanced_backtest_*.png`. |
-| **Visualization JSON** | Structured series for the SPA: equity (strategy + SPY/QQQ), drawdown, regime bands, group activation timeline, trades; includes `initial_capital` (default notionals scale). Group lanes show at most **two** activated groups per date (top two by total group weight), matching `max_active_groups` in the Adaptive Rotation config. |
+
+| Area                   | Description                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Run catalog**        | Lists saved runs with labels, date range, artifact URLs, row counts.                                                                                                                                                                                                                                                                   |
+| **Run metadata**       | Single-run summary: links to chart, trade log, summary, weights, visualization JSON.                                                                                                                                                                                                                                                   |
+| **Summary CSV**        | Weekly / periodic metrics from `backtest_*.csv`.                                                                                                                                                                                                                                                                                       |
+| **Trade log**          | Rows from `trade_log_*.csv`.                                                                                                                                                                                                                                                                                                           |
+| **Weights**            | Raw portfolio weights CSV for inspection.                                                                                                                                                                                                                                                                                              |
+| **Chart PNG**          | Serves the matplotlib-generated `enhanced_backtest_*.png`.                                                                                                                                                                                                                                                                             |
+| **Visualization JSON** | Structured series for the SPA: equity (strategy + SPY/QQQ), drawdown, regime bands, group activation timeline, trades; includes `initial_capital`, `max_timeline_active_groups` (2), and per-row `group_weight_total` for each of the three display groups. The chart keeps at most **two** lanes per date (ranked by total group weight); the frontend applies the same cap again as a safeguard. |
+
 
 **Out of scope (by design):** live trading, auth, persisting user settings, triggering backtests over HTTP, non–Adaptive-Rotation strategies.
 
@@ -87,16 +89,18 @@ No mandatory env vars for read-only results. Optional keys (Alpaca, FMP, etc.) a
 
 ## API reference
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/health` | Liveness check |
-| `GET` | `/api/results` | List runs (`{ "results": [...] }`) |
-| `GET` | `/api/results/{run_id}` | Run metadata + artifact URLs |
-| `GET` | `/api/results/{run_id}/summary` | `{ "rows": [...] }` from summary CSV |
-| `GET` | `/api/results/{run_id}/trade-log` | `{ "rows": [...] }` |
-| `GET` | `/api/results/{run_id}/weights` | `{ "rows": [...] }` |
-| `GET` | `/api/results/{run_id}/visualization` | JSON for interactive dashboard chart |
-| `GET` | `/api/results/{run_id}/chart` | PNG file response |
-| `GET` | `/artifacts/{filename}` | Static files from the adaptive_rotation output dir |
+
+| Method | Path                                  | Purpose                                            |
+| ------ | ------------------------------------- | -------------------------------------------------- |
+| `GET`  | `/health`                             | Liveness check                                     |
+| `GET`  | `/api/results`                        | List runs (`{ "results": [...] }`)                 |
+| `GET`  | `/api/results/{run_id}`               | Run metadata + artifact URLs                       |
+| `GET`  | `/api/results/{run_id}/summary`       | `{ "rows": [...] }` from summary CSV               |
+| `GET`  | `/api/results/{run_id}/trade-log`     | `{ "rows": [...] }`                                |
+| `GET`  | `/api/results/{run_id}/weights`       | `{ "rows": [...] }`                                |
+| `GET`  | `/api/results/{run_id}/visualization` | JSON for interactive dashboard chart               |
+| `GET`  | `/api/results/{run_id}/chart`         | PNG file response                                  |
+| `GET`  | `/artifacts/{filename}`               | Static files from the adaptive_rotation output dir |
+
 
 `run_id` matches the pattern `{YYYY-MM-DD}_to_{YYYY-MM-DD}` derived from `enhanced_backtest_*_to_*.png` filenames.

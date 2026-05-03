@@ -47,6 +47,8 @@ export type GroupActivation = {
   group: string;
   active: boolean;
   held_stocks: string[];
+  /** Sum of weights in this group for this rebalance row (from API). */
+  group_weight_total?: number;
 };
 
 export type RegimeBand = {
@@ -59,6 +61,8 @@ export type VisualizationData = {
   run: BacktestRun;
   /** Starting portfolio notional for scaling hover values (default 1000). */
   initial_capital?: number;
+  /** Cap on simultaneous group lanes (matches Adaptive Rotation max_active_groups). */
+  max_timeline_active_groups?: number;
   equity: EquityPoint[];
   drawdown: DrawdownPoint[];
   regimes: RegimeBand[];
