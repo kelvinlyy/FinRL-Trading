@@ -8,13 +8,15 @@ The app is **static-first**: pages are mostly server components that fetch the F
 
 ## Design system
 
-| Token / pattern | Role |
-|-----------------|------|
-| **Colors** | `mercury-blue` (#5266eb) primary actions; `deep-space` / `midnight-slate` backgrounds; `starlight` / `silver` text; `lead` borders (see `tailwind.config.ts`). |
-| **Typography** | Inter / Manrope stack; scale from `caption` through `display` for hierarchy. |
-| **Surfaces** | `.panel` — bordered, blurred panels on a radial + linear gradient body (`app/globals.css`). |
-| **Shape** | Pill CTAs (`rounded-[32px]`), generous spacing, max content width `1200px`. |
-| **Charts** | SVG-based interactive report (`components/interactive-backtest-chart.tsx`): strategy / SPY / QQQ colors aligned with legend; regime shading; group activation lanes. |
+
+| Token / pattern | Role                                                                                                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Colors**      | `mercury-blue` (#5266eb) primary actions; `deep-space` / `midnight-slate` backgrounds; `starlight` / `silver` text; `lead` borders (see `tailwind.config.ts`).       |
+| **Typography**  | Inter / Manrope stack; scale from `caption` through `display` for hierarchy.                                                                                         |
+| **Surfaces**    | `.panel` — bordered, blurred panels on a radial + linear gradient body (`app/globals.css`).                                                                          |
+| **Shape**       | Pill CTAs (`rounded-[32px]`), generous spacing, max content width `1200px`.                                                                                          |
+| **Charts**      | SVG-based interactive report (`components/interactive-backtest-chart.tsx`): strategy / SPY / QQQ colors aligned with legend; regime shading; group activation lanes. |
+
 
 Reference mood: [Mercury style – Refero](https://styles.refero.design/) (dark operational dashboard, not a marketing landing page).
 
@@ -50,11 +52,13 @@ frontend/
 
 ## Functionality
 
-| Route / area | What it does |
-|--------------|----------------|
-| **`/`** | Command dashboard: overview copy and navigation to Results / Strategy. |
-| **`/results`** | Lists discovered runs (from API); run selector; summary cards; **interactive** equity / regime / drawdown / group-timeline chart; link to download PNG. |
-| **`/strategy`** | Static explanation of Adaptive Rotation (methodology), no live execution. |
+
+| Route / area    | What it does                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `**/`**         | Command dashboard: overview copy and navigation to Results / Strategy.                                                                                  |
+| `**/results**`  | Lists discovered runs (from API); run selector; summary cards; **interactive** equity / regime / drawdown / group-timeline chart; link to download PNG. |
+| `**/strategy`** | Static explanation of Adaptive Rotation (methodology), no live execution.                                                                               |
+
 
 **Not included:** live trading, settings persistence, generic demo backtests, Streamlit-era TBD sections.
 
@@ -80,7 +84,7 @@ npm install
 npm run dev
 ```
 
-Opens **http://localhost:3000** (see `package.json` — dev server binds `0.0.0.0:3000`).
+Opens **[http://localhost:3000](http://localhost:3000)** (see `package.json` — dev server binds `0.0.0.0:3000`).
 
 Point the browser at the API:
 
@@ -108,8 +112,12 @@ npm run lint
 
 ## Troubleshooting
 
-| Issue | Hint |
-|-------|------|
-| Empty results list | Run Adaptive Rotation backtest so artifacts exist under `src/strategies/output/weights/adaptive_rotation/`, or check backend logs. |
+
+| Issue                        | Hint                                                                                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **500** / `Cannot find module './NNN.js'` | Stale `.next` build output. Run **`npm run clean`**, then **`npm run build`**, and restart the dev or production server. Or delete `frontend/.next` manually. |
+| Empty results list           | Run Adaptive Rotation backtest so artifacts exist under `src/strategies/output/weights/adaptive_rotation/`, or check backend logs.                            |
 | Chart missing / failed fetch | Confirm `GET /api/results/{id}/visualization` returns 200; CORS and `NEXT_PUBLIC_API_BASE_URL` must match how you open the site (`localhost` vs `127.0.0.1`). |
-| Type errors after pulling | Run `npm install` and `npm run build`. |
+| Type errors after pulling    | Run `npm install` and `npm run build`.                                                                                                                        |
+
+
