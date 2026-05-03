@@ -56,7 +56,7 @@ frontend/
 | Route / area    | What it does                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `**/`**         | Command dashboard: overview copy and navigation to Results / Strategy.                                                                                  |
-| `**/results**`  | Lists discovered runs (from API); run selector; summary cards; **interactive** equity / regime / drawdown / group-timeline chart; link to download PNG. |
+| `**/results`**  | Lists discovered runs (from API); run selector; summary cards; **interactive** equity / regime / drawdown / group-timeline chart; link to download PNG. |
 | `**/strategy`** | Static explanation of Adaptive Rotation (methodology), no live execution.                                                                               |
 
 
@@ -113,11 +113,11 @@ npm run lint
 ## Troubleshooting
 
 
-| Issue                        | Hint                                                                                                                                                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **500** / `Cannot find module './NNN.js'` | Stale `.next` build output. Run **`npm run clean`**, then **`npm run build`**, and restart the dev or production server. Or delete `frontend/.next` manually. |
-| Empty results list           | Run Adaptive Rotation backtest so artifacts exist under `src/strategies/output/weights/adaptive_rotation/`, or check backend logs.                            |
-| Chart missing / failed fetch | Confirm `GET /api/results/{id}/visualization` returns 200; CORS and `NEXT_PUBLIC_API_BASE_URL` must match how you open the site (`localhost` vs `127.0.0.1`). |
-| Type errors after pulling    | Run `npm install` and `npm run build`.                                                                                                                        |
+| Issue                                     | Hint                                                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **500** / `Cannot find module './NNN.js'` | Stale `.next` build output. Run `**npm run clean`**, then `**npm run build**`, and restart the dev or production server. Or delete `frontend/.next` manually. |
+| Empty results list                        | Run Adaptive Rotation backtest so artifacts exist under `src/strategies/output/weights/adaptive_rotation/`, or check backend logs.                            |
+| Chart missing / failed fetch              | Confirm `GET /api/results/{id}/visualization` returns 200; CORS and `NEXT_PUBLIC_API_BASE_URL` must match how you open the site (`localhost` vs `127.0.0.1`). |
+| Type errors after pulling                 | Run `npm install` and `npm run build`.                                                                                                                        |
 
 
