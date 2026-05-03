@@ -17,6 +17,12 @@ from datetime import datetime, timedelta
 import logging
 from pathlib import Path
 import json
+import os
+import re
+import subprocess
+import sys
+from typing import Optional
+from typing import Optional
 
 # Import project modules
 try:
@@ -56,6 +62,113 @@ if 'config' not in st.session_state:
     st.session_state.config = get_config()
 if 'data_store' not in st.session_state:
     st.session_state.data_store = get_data_store()
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ADAPTIVE_CONFIG = PROJECT_ROOT / "src/strategies/AdaptiveRotationConf_v1.2.1.yaml"
+DEFAULT_ADAPTIVE_DATA_DIR = PROJECT_ROOT / "data/fmp_daily"
+DEFAULT_ADAPTIVE_WEIGHTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
+
+
+def mock_tbd_notice(message: str = "This section currently uses mock/demo data and is TBD for real integration."):
+    """Show a consistent marker for prototype sections."""
+    st.warning(f"Mock / TBD: {message}")
+
+
+def _format_money(value) -> str:
+    try:
+        return f"${float(value):,.2f}"
+    except (TypeError, ValueError):
+        return "$0.00"
+
+
+def _format_pct(value) -> str:
+    try:
+        return f"{float(value):.2%}"
+    except (TypeError, ValueError):
+        return "0.00%"
+
+
+def _safe_filename_date(value) -> str:
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
+
+
+def _parse_backtest_filename(path: Path) -> dict:
+    match = re.match(r"enhanced_backtest_(.+)_to_(.+)\.png", path.name)
+    if not match:
+        return {"label": path.name, "start": "", "end": ""}
+    start, end = match.groups()
+    return {"label": f"{start} to {end}", "start": start, "end": end}
+
+
+def _list_adaptive_results() -> list[Path]:
+    if not DEFAULT_ADAPTIVE_WEIGHTS_DIR.exists():
+        return []
+    return sorted(
+        DEFAULT_ADAPTIVE_WEIGHTS_DIR.glob("enhanced_backtest_*_to_*.png"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+
+def _read_trade_log_for_chart(chart_path: Path) -> Optional[pd.DataFrame]:
+    info = _parse_backtest_filename(chart_path)
+    if not info["start"] or not info["end"]:
+        return None
+    trade_path = chart_path.with_name(f"trade_log_{info['start']}_to_{info['end']}.csv")
+    if not trade_path.exists():
+        return None
+    df = pd.read_csv(trade_path)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+    return df
+
+
+def run_adaptive_rotation_backtest(start_date, end_date, skip_download: bool = True):
+    """Run the real Adaptive Rotation backtest pipeline via deploy.sh."""
+    start = _safe_filename_date(start_date)
+    end = _safe_filename_date(end_date)
+    cmd = [
+        "./deploy.sh",
+        "--strategy", "adaptive_rotation",
+        "--mode", "backtest",
+        "--start", start,
+        "--end", end,
+    ]
+    if skip_download:
+        cmd.append("--skip-download")
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{PROJECT_ROOT / 'src'}:{PROJECT_ROOT}:{env.get('PYTHONPATH', '')}"
+
+    result = subprocess.run(
+        cmd,
+        cwd=PROJECT_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+
+    st.session_state.adaptive_backtest_stdout = result.stdout
+    st.session_state.adaptive_backtest_stderr = result.stderr
+
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or result.stdout or "Backtest command failed")
+
+    chart = DEFAULT_ADAPTIVE_WEIGHTS_DIR / f"enhanced_backtest_{start}_to_{end}.png"
+    trade_log = DEFAULT_ADAPTIVE_WEIGHTS_DIR / f"trade_log_{start}_to_{end}.csv"
+    summary = DEFAULT_ADAPTIVE_WEIGHTS_DIR / f"backtest_{start}_to_{end}.csv"
+
+    st.session_state.adaptive_backtest_result = {
+        "start": start,
+        "end": end,
+        "chart": str(chart),
+        "trade_log": str(trade_log),
+        "summary": str(summary),
+    }
+    return st.session_state.adaptive_backtest_result
 
 
 def main():
@@ -106,7 +219,8 @@ def display_quick_stats():
         with col2:
             st.metric("Cache Entries", stats.get('cache_entries', 0))
 
-        st.metric("Storage Used", ".1f")
+        storage_mb = stats.get('storage_used_mb', 0)
+        st.metric("Storage Used", f"{storage_mb:.1f} MB")
 
     except Exception as e:
         st.error(f"Could not load stats: {e}")
@@ -115,6 +229,7 @@ def display_quick_stats():
 def show_overview():
     """Show overview dashboard."""
     st.header("Trading Overview")
+    mock_tbd_notice("Overview metrics, recent activity, and portfolio chart are demo placeholders.")
 
     # Key metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -131,7 +246,7 @@ def show_overview():
     # Recent activity
     st.subheader("Recent Activity")
     activity_data = pd.DataFrame({
-        'Time': pd.date_range('2024-01-01 09:00', periods=5, freq='1H'),
+        'Time': pd.date_range('2024-01-01 09:00', periods=5, freq='1h'),
         'Action': ['Strategy Execution', 'Portfolio Rebalance', 'Data Update', 'Order Filled', 'Strategy Backtest'],
         'Status': ['Success', 'Success', 'Success', 'Success', 'Completed'],
         'Details': ['ML Strategy executed', 'Quarterly rebalance', 'S&P 500 data updated', 'AAPL order filled', 'Backtest completed']
@@ -193,6 +308,11 @@ def show_data_management():
 
     with tab2:
         st.subheader("Data Processing")
+        mock_tbd_notice("These buttons expect placeholder local CSV files and need a proper file/path workflow.")
+        mock_tbd_notice(
+            "These buttons call pipeline helpers with placeholder paths "
+            "(`./data/fundamentals.csv`, `./data/prices.csv`)."
+        )
 
         if st.button("Process Raw Data"):
             with st.spinner("Processing data..."):
@@ -200,6 +320,7 @@ def show_data_management():
                     from ..data.data_processor import process_fundamentals, process_prices
 
                     # Process sample data
+                    mock_tbd_notice("Processing buttons expect local placeholder files; real ingestion pipeline is TBD.")
                     fundamentals = process_fundamentals("./data/fundamentals.csv")
                     prices = process_prices("./data/prices.csv")
 
@@ -240,6 +361,7 @@ def show_data_management():
 
     with tab4:
         st.subheader("Data Quality")
+        mock_tbd_notice("Data quality scores below are static sample values.")
 
         # Data quality checks
         st.subheader("Data Quality Metrics")
@@ -257,6 +379,152 @@ def show_data_management():
 def show_strategy_backtesting():
     """Show strategy backtesting interface."""
     st.header("Strategy Backtesting")
+
+    tab_real, tab_results, tab_mock = st.tabs([
+        "Adaptive Rotation (Real)",
+        "Saved Results",
+        "Legacy Demo (Mock / TBD)",
+    ])
+
+    with tab_real:
+        show_adaptive_rotation_backtest()
+
+    with tab_results:
+        show_adaptive_results_browser()
+
+    with tab_mock:
+        show_legacy_demo_backtest()
+
+
+def show_adaptive_rotation_backtest():
+    """Run the real Adaptive Rotation backtest and display generated artifacts."""
+    st.subheader("Adaptive Rotation Backtest")
+    st.success(
+        "Real workflow: runs deploy.sh, fetches/uses Yahoo Finance CSV data, executes the "
+        "Adaptive Rotation strategy, then displays the enhanced chart and trade log."
+    )
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        start_date = st.date_input(
+            "Start Date",
+            datetime(2024, 1, 1),
+            key="adaptive_start_date",
+        )
+        end_date = st.date_input(
+            "End Date",
+            datetime(2025, 5, 2),
+            key="adaptive_end_date",
+        )
+        skip_download = st.checkbox(
+            "Skip Yahoo download if data exists",
+            value=True,
+            help="Uses existing data/fmp_daily CSVs when checked. Uncheck to refresh from Yahoo Finance.",
+        )
+        st.caption(f"Config: `{DEFAULT_ADAPTIVE_CONFIG.relative_to(PROJECT_ROOT)}`")
+        st.caption(f"Data dir: `{DEFAULT_ADAPTIVE_DATA_DIR.relative_to(PROJECT_ROOT)}`")
+
+        if st.button("Run Adaptive Rotation Backtest", type="primary"):
+            if start_date >= end_date:
+                st.error("Start date must be before end date.")
+            else:
+                with st.spinner("Running real Adaptive Rotation backtest. This can take a few minutes..."):
+                    try:
+                        result = run_adaptive_rotation_backtest(start_date, end_date, skip_download)
+                        st.success("Backtest completed and artifacts generated.")
+                    except Exception as e:
+                        st.error(f"Adaptive Rotation backtest failed: {e}")
+                        result = None
+                if result:
+                    display_adaptive_result(result)
+
+    with col2:
+        result = st.session_state.get("adaptive_backtest_result")
+        if result:
+            display_adaptive_result(result)
+        else:
+            latest = _list_adaptive_results()
+            if latest:
+                st.info("No run selected yet. Showing latest saved result.")
+                info = _parse_backtest_filename(latest[0])
+                display_adaptive_result({
+                    "start": info["start"],
+                    "end": info["end"],
+                    "chart": str(latest[0]),
+                    "trade_log": str(latest[0].with_name(f"trade_log_{info['start']}_to_{info['end']}.csv")),
+                    "summary": str(latest[0].with_name(f"backtest_{info['start']}_to_{info['end']}.csv")),
+                })
+            else:
+                st.info("No Adaptive Rotation results found yet. Run a backtest to generate charts and trade logs.")
+
+    stdout = st.session_state.get("adaptive_backtest_stdout")
+    stderr = st.session_state.get("adaptive_backtest_stderr")
+    if stdout or stderr:
+        with st.expander("Backtest command output"):
+            if stdout:
+                st.code(stdout[-6000:])
+            if stderr:
+                st.code(stderr[-2000:])
+
+
+def show_adaptive_results_browser():
+    """Browse previously generated Adaptive Rotation outputs."""
+    st.subheader("Saved Adaptive Rotation Results")
+    results = _list_adaptive_results()
+    if not results:
+        st.info("No saved enhanced backtest charts found.")
+        return
+
+    labels = [_parse_backtest_filename(p)["label"] for p in results]
+    selected_label = st.selectbox("Select saved result", labels)
+    selected = results[labels.index(selected_label)]
+    info = _parse_backtest_filename(selected)
+
+    display_adaptive_result({
+        "start": info["start"],
+        "end": info["end"],
+        "chart": str(selected),
+        "trade_log": str(selected.with_name(f"trade_log_{info['start']}_to_{info['end']}.csv")),
+        "summary": str(selected.with_name(f"backtest_{info['start']}_to_{info['end']}.csv")),
+    })
+
+
+def display_adaptive_result(result: dict):
+    """Render enhanced chart, summary, and trade log for a real Adaptive Rotation result."""
+    chart = Path(result.get("chart", ""))
+    trade_log = Path(result.get("trade_log", ""))
+    summary = Path(result.get("summary", ""))
+
+    st.markdown(f"**Result:** `{result.get('start', '')}` to `{result.get('end', '')}`")
+
+    if chart.exists():
+        st.image(str(chart), caption="Enhanced Adaptive Rotation chart: equity, regime, groups, drawdown, trades")
+    else:
+        st.warning(f"Enhanced chart not found: `{chart}`")
+
+    if summary.exists():
+        with st.expander("Weekly summary CSV", expanded=False):
+            summary_df = pd.read_csv(summary)
+            st.dataframe(summary_df.tail(20), use_container_width=True)
+
+    if trade_log.exists():
+        trade_df = pd.read_csv(trade_log)
+        if "date" in trade_df.columns:
+            trade_df["date"] = pd.to_datetime(trade_df["date"]).dt.strftime("%Y-%m-%d")
+        st.subheader("Trade Log")
+        st.caption("Derived from week-to-week portfolio weight changes.")
+        st.dataframe(trade_df, use_container_width=True)
+    else:
+        st.warning(f"Trade log not found: `{trade_log}`")
+
+
+def show_legacy_demo_backtest():
+    """Original demo backtest UI, explicitly marked as mock/TBD."""
+    mock_tbd_notice(
+        "This legacy demo uses random synthetic prices and static weights. "
+        "Use the Adaptive Rotation tab for real Yahoo-data backtests."
+    )
 
     col1, col2 = st.columns([1, 2])
 
@@ -301,13 +569,14 @@ def show_strategy_backtesting():
             # Key metrics
             metrics_cols = st.columns(4)
             with metrics_cols[0]:
-                st.metric("Final Value", ".2f")
+                final_val = result.portfolio_values.iloc[-1] if hasattr(result, 'portfolio_values') and len(result.portfolio_values) > 0 else 0
+                st.metric("Final Value", _format_money(final_val))
             with metrics_cols[1]:
-                st.metric("Total Return", ".2%")
+                st.metric("Total Return", _format_pct(result.metrics.get('total_return', 0)))
             with metrics_cols[2]:
-                st.metric("Annual Return", ".2%")
+                st.metric("Annual Return", _format_pct(result.metrics.get('annual_return', 0)))
             with metrics_cols[3]:
-                st.metric("Sharpe Ratio", ".2f")
+                st.metric("Sharpe Ratio", f"{result.metrics.get('sharpe_ratio', 0):.2f}")
 
             # Performance chart
             if hasattr(result, 'portfolio_values'):
@@ -322,7 +591,7 @@ def show_strategy_backtesting():
             st.subheader("Detailed Metrics")
             metrics_df = pd.DataFrame({
                 'Metric': list(result.metrics.keys()),
-                'Value': [".4f" for v in result.metrics.values()]
+                'Value': [f"{v:.4f}" for v in result.metrics.values()]
             })
             st.dataframe(metrics_df)
 
@@ -349,7 +618,7 @@ def run_backtest(strategy_type, start_date, end_date, initial_capital, top_quant
 
     # Sample weight signals
     weight_signals = pd.DataFrame({
-        'date': pd.date_range(start_date, end_date, freq='Q'),
+        'date': pd.date_range(start_date, end_date, freq='QE'),
         'AAPL': 0.5,
         'MSFT': 0.3,
         'GOOGL': 0.2
@@ -391,11 +660,11 @@ def show_live_trading():
 
                         col1, col2, col3 = st.columns(3)
                         with col1:
-                            st.metric("Portfolio Value", ".2f")
+                            st.metric("Portfolio Value", _format_money(account_info.get('portfolio_value', 0)))
                         with col2:
-                            st.metric("Cash", ".2f")
+                            st.metric("Cash", _format_money(account_info.get('cash', 0)))
                         with col3:
-                            st.metric("Buying Power", ".2f")
+                            st.metric("Buying Power", _format_money(account_info.get('buying_power', 0)))
 
                         # Positions table
                         if positions:
@@ -445,6 +714,9 @@ def show_live_trading():
 
         with tab3:
             st.subheader("Strategy Execution")
+            mock_tbd_notice(
+                "Sample strategy execution references a placeholder strategy and is TBD for real order generation."
+            )
 
             # Strategy execution
             if st.button("Execute Sample Strategy"):
@@ -482,6 +754,7 @@ def show_live_trading():
 def show_portfolio_analysis():
     """Show portfolio analysis interface."""
     st.header("Portfolio Analysis")
+    mock_tbd_notice("Portfolio analytics use random/sample data. Use Strategy Backtesting > Adaptive Rotation for real backtest analytics.")
 
     # Sample portfolio data
     dates = pd.date_range('2024-01-01', periods=100, freq='D')
@@ -505,13 +778,13 @@ def show_portfolio_analysis():
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Return", ".2%")
+            st.metric("Total Return", _format_pct(total_return))
         with col2:
-            st.metric("Annual Return", ".2%")
+            st.metric("Annual Return", _format_pct(annual_return))
         with col3:
-            st.metric("Volatility", ".2%")
+            st.metric("Volatility", _format_pct(volatility))
         with col4:
-            st.metric("Sharpe Ratio", ".2f")
+            st.metric("Sharpe Ratio", f"{sharpe:.2f}")
 
     with tab2:
         st.subheader("Risk Analysis")
@@ -532,14 +805,15 @@ def show_portfolio_analysis():
 
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Max Drawdown", ".2%")
+            st.metric("Max Drawdown", _format_pct(max_drawdown))
         with col2:
-            st.metric("VaR (95%)", ".2%")
+            st.metric("VaR (95%)", _format_pct(var_95))
         with col3:
-            st.metric("CVaR (95%)", ".2%")
+            st.metric("CVaR (95%)", _format_pct(cvar_95))
 
     with tab3:
         st.subheader("Attribution Analysis")
+        mock_tbd_notice("Attribution values are static samples.")
 
         # Sample attribution data
         attribution_data = pd.DataFrame({
@@ -557,6 +831,7 @@ def show_portfolio_analysis():
 
     with tab4:
         st.subheader("Benchmarking")
+        mock_tbd_notice("Benchmark comparison uses random sample data.")
 
         # Sample benchmark comparison
         benchmark_data = pd.DataFrame({
@@ -574,6 +849,8 @@ def show_portfolio_analysis():
 def show_settings():
     """Show settings interface."""
     st.header("Settings")
+    mock_tbd_notice("Settings controls are UI-only unless noted; most changes are not persisted to .env or config files.")
+    mock_tbd_notice("Settings controls are mostly UI-only and do not persist to `.env` or config files yet.")
 
     tab1, tab2, tab3 = st.tabs(["General", "Trading", "Data"])
 
