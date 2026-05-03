@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BacktestProgressBar } from "@/components/backtest-progress-bar";
-import { ApiRequestError, DataCoverageError, getBacktestJob, startBacktestRun } from "@/lib/api";
-import type { BacktestJob, DataCoverageDetail } from "@/lib/types";
+import { ApiRequestError, DataCoverageError, getBacktestJob, listDeployStrategies, startBacktestRun } from "@/lib/api";
+import type { BacktestJob, DataCoverageDetail, DeployStrategyRow } from "@/lib/types";
 
 function DataGapPanel({ detail }: { detail: DataCoverageDetail }) {
   return (
@@ -90,6 +90,10 @@ function forgetActiveJobId() {
 }
 
 export function RunBacktestPanel() {
+  const [strategies, setStrategies] = useState<DeployStrategyRow[]>([]);
+  const [strategy, setStrategy] = useState("adaptive_rotation");
+  const [mode, setMode] = useState<"backtest" | "single">("backtest");
+  const [singleDate, setSingleDate] = useState("2024-12-31");
   const [start, setStart] = useState("2024-01-01");
   const [end, setEnd] = useState("2024-12-31");
   const [jobId, setJobId] = useState<string | null>(null);
@@ -110,6 +114,15 @@ export function RunBacktestPanel() {
   useEffect(() => {
     return () => clearPoll();
   }, [clearPoll]);
+
+  useEffect(() => {
+    void listDeployStrategies().then((rows) => {
+      setStrategies(rows);
+      if (rows.length) {
+        setStrategy((prev) => (rows.some((r) => r.name === prev) ? prev : rows[0].name));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     try {
@@ -137,9 +150,12 @@ export function RunBacktestPanel() {
           clearPoll();
           forgetActiveJobId();
           setDataGap(null);
-          const runId = `${start}_to_${end}`;
+          const runHint =
+            mode === "backtest"
+              ? `${start}_to_${end}`
+              : `single_${singleDate}`;
           setFormError(
-            `Job not found on the server (often after an API restart). If the backtest already finished, open Results for run “${runId}”.`,
+            `Job not found on the server (often after an API restart). If the job already finished, look for “${runHint}” on disk or in logs.`,
           );
           return;
         }
@@ -156,7 +172,7 @@ export function RunBacktestPanel() {
         }
       }
     },
-    [clearPoll, start, end],
+    [clearPoll, start, end, mode, singleDate],
   );
 
   useEffect(() => {
@@ -178,7 +194,11 @@ export function RunBacktestPanel() {
     setJob(null);
     setJobId(null);
     try {
-      const res = await startBacktestRun({ start, end });
+      const res = await startBacktestRun(
+        mode === "backtest"
+          ? { start, end, strategy, mode: "backtest" }
+          : { date: singleDate, strategy, mode: "single" },
+      );
       setJobId(res.job_id);
       rememberActiveJobId(res.job_id);
     } catch (err) {
@@ -199,13 +219,20 @@ export function RunBacktestPanel() {
     <div className="space-y-10">
       <form onSubmit={onSubmit} className="panel space-y-8 rounded-md p-8 md:p-10">
         <div>
-          <p className="eyebrow">Adaptive Rotation</p>
-          <h2 className="mt-3 font-display text-heading font-[360] text-starlight">Date range and launch</h2>
+          <p className="eyebrow">Deploy job</p>
+          <h2 className="mt-3 font-display text-heading font-[360] text-starlight">Strategy, mode, and launch</h2>
           <p className="mt-4 text-body text-silver">
-            Uses existing daily CSVs under <code className="text-caption text-ghost-blue">data/fmp_daily</code> (no
-            download step). The API checks every required ticker and file coverage for your window and the strategy
-            lookback from the YAML config.
+            Uses existing daily CSVs under <code className="text-caption text-ghost-blue">data/fmp_daily</code> (worker
+            passes <code className="text-caption text-ghost-blue">--skip-download</code>). The API validates coverage for
+            your range or single decision date plus YAML lookback.
           </p>
+          {strategies.length <= 1 ? (
+            <p className="mt-3 text-body-sm text-silver/80">
+              Only <code className="text-ghost-blue">adaptive_rotation</code> is registered in{" "}
+              <code className="text-ghost-blue">deploy.sh</code> today; add strategies there to expose more runners (UC1 /
+              UC2 hooks).
+            </p>
+          ) : null}
           <p className="mt-3 text-body-sm text-silver/90">
             Refreshing this page does not cancel the run: the job is tracked on disk and the worker keeps executing in the
             background. Your browser restores the active job id from local storage so polling continues.
@@ -214,26 +241,67 @@ export function RunBacktestPanel() {
 
         <div className="grid gap-6 md:grid-cols-2">
           <label className="flex flex-col gap-2 text-body-sm text-silver">
-            Start date
-            <input
-              type="date"
-              value={start}
-              onChange={(ev) => setStart(ev.target.value)}
+            Strategy
+            <select
+              value={strategy}
+              onChange={(ev) => setStrategy(ev.target.value)}
               className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
-              required
-            />
+            >
+              {(strategies.length ? strategies : [{ name: "adaptive_rotation", config: "", runner: "" }]).map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-2 text-body-sm text-silver">
-            End date
+            Mode
+            <select
+              value={mode}
+              onChange={(ev) => setMode(ev.target.value as "backtest" | "single")}
+              className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
+            >
+              <option value="backtest">Backtest (date range)</option>
+              <option value="single">Single date (signal JSON)</option>
+            </select>
+          </label>
+        </div>
+
+        {mode === "backtest" ? (
+          <div className="grid gap-6 md:grid-cols-2">
+            <label className="flex flex-col gap-2 text-body-sm text-silver">
+              Start date
+              <input
+                type="date"
+                value={start}
+                onChange={(ev) => setStart(ev.target.value)}
+                className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
+                required
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-body-sm text-silver">
+              End date
+              <input
+                type="date"
+                value={end}
+                onChange={(ev) => setEnd(ev.target.value)}
+                className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
+                required
+              />
+            </label>
+          </div>
+        ) : (
+          <label className="flex max-w-md flex-col gap-2 text-body-sm text-silver">
+            Decision date
             <input
               type="date"
-              value={end}
-              onChange={(ev) => setEnd(ev.target.value)}
+              value={singleDate}
+              onChange={(ev) => setSingleDate(ev.target.value)}
               className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
               required
             />
           </label>
-        </div>
+        )}
 
         {dataGap ? <DataGapPanel detail={dataGap} /> : null}
 
@@ -253,15 +321,22 @@ export function RunBacktestPanel() {
             disabled={busy}
             className="rounded-[32px] bg-mercury-blue px-6 py-4 text-body-sm font-[480] text-pure-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Running…" : "Run backtest"}
+            {busy ? "Running…" : mode === "single" ? "Run single-day signal" : "Run backtest"}
           </button>
-          {job?.status === "completed" && job.result_run_id ? (
+          {job?.status === "completed" && job.result_run_id && job.mode !== "single" ? (
             <Link
               href={`/results?run=${encodeURIComponent(job.result_run_id)}`}
               className="rounded-[32px] border border-ghost-blue/50 px-6 py-4 text-body-sm font-[480] text-starlight hover:border-mercury-blue"
             >
               Open results
             </Link>
+          ) : null}
+          {job?.status === "completed" && job.mode === "single" && job.result_run_id ? (
+            <span className="text-body-sm text-silver">
+              Single run <code className="text-ghost-blue">{job.result_run_id}</code> — audit JSON under{" "}
+              <code className="text-caption text-ghost-blue">src/strategies/output/audit/adaptive_rotation/audit_*.json</code>{" "}
+              (paper mode uses <code className="text-caption text-ghost-blue">signal_*.json</code> via deploy only).
+            </span>
           ) : null}
         </div>
       </form>
@@ -275,6 +350,12 @@ export function RunBacktestPanel() {
           </div>
           <p className="text-body-sm text-silver">
             Job <code className="text-starlight/90">{job.job_id}</code>
+            {job.strategy ? (
+              <>
+                {" "}
+                — <code className="text-ghost-blue">{job.strategy}</code> / {job.mode ?? "backtest"}
+              </>
+            ) : null}
           </p>
           {job.message ? <p className="text-body-sm text-red-200">{job.message}</p> : null}
           {job.stderr_tail ? (

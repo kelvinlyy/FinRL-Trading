@@ -1,5 +1,12 @@
 version: '3.8'
 
+# Default service below runs the legacy Streamlit/CLI image on port 8501.
+# For the Next + FastAPI console (ports 3000 / 8000), use local dev:
+#   ./scripts/restart-dev-stack.sh
+# Optional Docker profile `console` (commented — needs a custom image or multi-stage build):
+#   docker compose --profile console up
+#   # services would mount the repo and run uvicorn + npm; not wired in-tree to keep this file minimal.
+
 services:
   finrl-trading:
     build: .

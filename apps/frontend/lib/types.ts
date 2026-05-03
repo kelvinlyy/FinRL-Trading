@@ -108,6 +108,9 @@ export type BacktestJobSummary = {
   status: string;
   start: string;
   end: string;
+  strategy?: string;
+  mode?: string;
+  single_date?: string | null;
   updated_at?: string | null;
   result_run_id?: string | null;
 };
@@ -163,6 +166,9 @@ export type BacktestJob = {
   status: BacktestJobStatus;
   start: string;
   end: string;
+  strategy?: string;
+  mode?: string;
+  single_date?: string | null;
   created_at: string;
   updated_at: string;
   returncode: number | null;
@@ -171,5 +177,32 @@ export type BacktestJob = {
   stdout_tail: string | null;
   stderr_tail: string | null;
   progress?: BacktestJobProgress;
+};
+
+export type DataOverview = {
+  fmp_daily: {
+    csv_count: number;
+    total_bytes: number;
+    total_mb: number;
+    relative_dir: string;
+  };
+  data_store: Record<string, unknown> | null;
+  download: { api_trigger: boolean; message: string };
+};
+
+export type DeployStrategyRow = {
+  name: string;
+  config: string;
+  runner: string;
+};
+
+export type RuntimePublicConfig = {
+  app_name: string;
+  version: string;
+  environment: string;
+  paths: Record<string, string>;
+  credentials_configured: Record<string, boolean>;
+  alpaca: { base_url: string; use_paper_trading: boolean };
+  web_legacy_streamlit_port: number;
 };
 

@@ -1,21 +1,55 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from typing import Literal
 
-from backend.services.backtest_jobs import create_job, get_job, list_recent_jobs
-from backend.services.data_coverage import check_backtest_data_coverage
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field, model_validator
+
+from backend.services.backtest_jobs import allowed_modes_public, create_job, get_job, list_recent_jobs
+from backend.services.data_coverage import check_backtest_data_coverage, check_single_date_data_coverage
+from backend.services.strategy_registry import list_deploy_strategies
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
+BacktestMode = Literal["backtest", "single"]
+
 
 class BacktestRunRequest(BaseModel):
-    start: str = Field(..., description="Backtest start date (YYYY-MM-DD)")
-    end: str = Field(..., description="Backtest end date (YYYY-MM-DD)")
+    """Run a deploy.sh-backed job. Omit ``strategy`` / ``mode`` for legacy backtest-only clients."""
+
+    start: str | None = Field(None, description="Backtest start date (YYYY-MM-DD); required when mode=backtest")
+    end: str | None = Field(None, description="Backtest end date (YYYY-MM-DD); required when mode=backtest")
+    date: str | None = Field(None, description="Decision date for mode=single (YYYY-MM-DD)")
+    strategy: str = Field("adaptive_rotation", description="Strategy name from deploy.sh STRATEGIES")
+    mode: BacktestMode = Field("backtest", description="backtest (range) or single (signal for one day)")
+
+    @model_validator(mode="after")
+    def validate_dates_for_mode(self):
+        if self.mode == "backtest":
+            if not self.start or not self.end:
+                raise ValueError("mode=backtest requires start and end")
+        elif self.mode == "single":
+            if not self.date:
+                raise ValueError("mode=single requires date")
+        return self
+
+
+@router.get("/strategies")
+def backtest_strategies():
+    """Strategies parsed from ``deploy.sh`` (UC1/UC2: add rows there to expose new runners)."""
+    return {"strategies": list_deploy_strategies()}
+
+
+@router.get("/modes")
+def backtest_modes():
+    return {"modes": allowed_modes_public()}
 
 
 @router.post("/run")
 def start_backtest(body: BacktestRunRequest):
     try:
-        report = check_backtest_data_coverage(body.start, body.end)
+        if body.mode == "backtest":
+            report = check_backtest_data_coverage(body.start or "", body.end or "")
+        else:
+            report = check_single_date_data_coverage(body.date or "")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
@@ -30,7 +64,13 @@ def start_backtest(body: BacktestRunRequest):
         raise HTTPException(status_code=400, detail=report.to_detail_dict())
 
     try:
-        job = create_job(body.start, body.end)
+        job = create_job(
+            body.start or "",
+            body.end or "",
+            strategy=body.strategy,
+            mode=body.mode,
+            single_date=body.date,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
