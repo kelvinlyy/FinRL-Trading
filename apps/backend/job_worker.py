@@ -1,0 +1,151 @@
+"""
+Detached process entrypoint: runs deploy.sh for one on-disk web backtest job.
+
+Started via: python -m backend.job_worker <JOB_DIR>
+(PYTHONPATH must include the repo ``apps`` directory.)
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RESULTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
+DEPLOY_SCRIPT = PROJECT_ROOT / "deploy.sh"
+META_NAME = "meta.json"
+
+
+def _utc_now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _atomic_write_meta(job_dir: Path, meta: dict) -> None:
+    meta["updated_at"] = _utc_now()
+    raw = json.dumps(meta, indent=2)
+    tmp = job_dir / ".meta.tmp"
+    out = job_dir / META_NAME
+    job_dir.mkdir(parents=True, exist_ok=True)
+    tmp.write_text(raw, encoding="utf-8")
+    tmp.replace(out)
+
+
+def _build_env() -> dict[str, str]:
+    env = os.environ.copy()
+    apps = str(PROJECT_ROOT / "apps")
+    src = str(PROJECT_ROOT / "src")
+    root = str(PROJECT_ROOT)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{apps}:{src}:{root}" + (f":{existing}" if existing else "")
+    venv_bin = PROJECT_ROOT / ".venv" / "bin"
+    if venv_bin.is_dir():
+        env["PATH"] = f"{venv_bin}{os.pathsep}{env.get('PATH', '')}"
+    return env
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("usage: python -m backend.job_worker JOB_DIR", file=sys.stderr)
+        sys.exit(2)
+    job_dir = Path(sys.argv[1]).resolve()
+    meta_path = job_dir / META_NAME
+    if not meta_path.is_file():
+        print(f"meta missing: {meta_path}", file=sys.stderr)
+        sys.exit(1)
+
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    job_id = meta.get("job_id", job_dir.name)
+    start = meta["start"]
+    end = meta["end"]
+
+    if not DEPLOY_SCRIPT.is_file():
+        meta["status"] = "failed"
+        meta["error"] = "deploy.sh not found at repository root"
+        meta["returncode"] = None
+        _atomic_write_meta(job_dir, meta)
+        sys.exit(1)
+
+    meta["status"] = "running"
+    meta["error"] = None
+    meta["worker_pid"] = os.getpid()
+    _atomic_write_meta(job_dir, meta)
+
+    out_path = job_dir / "deploy.stdout.log"
+    err_path = job_dir / "deploy.stderr.log"
+
+    cmd = [
+        "bash",
+        str(DEPLOY_SCRIPT),
+        "--strategy",
+        "adaptive_rotation",
+        "--mode",
+        "backtest",
+        "--start",
+        start,
+        "--end",
+        end,
+        "--skip-download",
+    ]
+
+    returncode: int | None = None
+    try:
+        with open(out_path, "w", encoding="utf-8", errors="replace") as out_f, open(
+            err_path, "w", encoding="utf-8", errors="replace"
+        ) as err_f:
+            completed = subprocess.run(
+                cmd,
+                cwd=str(PROJECT_ROOT),
+                env=_build_env(),
+                stdout=out_f,
+                stderr=err_f,
+                timeout=1200,
+            )
+            returncode = completed.returncode
+    except subprocess.TimeoutExpired:
+        returncode = None
+        meta["status"] = "failed"
+        meta["error"] = "Backtest timed out after 20 minutes"
+        meta["returncode"] = None
+        _atomic_write_meta(job_dir, meta)
+        with open(err_path, "a", encoding="utf-8", errors="replace") as err_f:
+            err_f.write("\n[job_worker: timeout]\n")
+        sys.exit(1)
+    except Exception as exc:  # noqa: BLE001
+        meta["status"] = "failed"
+        meta["error"] = str(exc)
+        meta["returncode"] = None
+        _atomic_write_meta(job_dir, meta)
+        sys.exit(1)
+
+    run_id = f"{start}_to_{end}"
+    # Weights + summary are written before the optional matplotlib enhanced PNG; the web UI
+    # charts from CSVs (visualization API), not the PNG.
+    weights_csv = RESULTS_DIR / f"ars_portfolio_weights_{start}_to_{end}.csv"
+
+    meta["returncode"] = returncode
+    if returncode == 0 and weights_csv.is_file():
+        meta["status"] = "completed"
+        meta["result_run_id"] = run_id
+        meta["error"] = None
+    elif returncode == 0:
+        meta["status"] = "failed"
+        meta["result_run_id"] = None
+        meta["error"] = (
+            f"deploy.sh exited 0 but expected weights CSV was not found ({weights_csv.name}). "
+            "The strategy may have failed before saving outputs."
+        )
+    else:
+        meta["status"] = "failed"
+        meta["result_run_id"] = None
+        meta["error"] = "Backtest command failed (non-zero exit)"
+
+    _atomic_write_meta(job_dir, meta)
+    sys.exit(0 if meta["status"] == "completed" else 1)
+
+
+if __name__ == "__main__":
+    main()

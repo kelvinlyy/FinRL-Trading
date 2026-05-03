@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #171721;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(82, 102, 235, 0.16), transparent 34rem),
+    linear-gradient(180deg, #171721 0%, #1e1e2a 55%, #171721 100%);
+  color: #ededf3;
+  font-family: var(--font-arcadia);
+  letter-spacing: 0.01em;
+}
+
+::selection {
+  background: #5266eb;
+  color: #ffffff;
+}
+
+.panel {
+  border: 1px solid rgba(112, 112, 125, 0.32);
+  background: rgba(30, 30, 42, 0.86);
+  backdrop-filter: blur(16px);
+}
+
+.interactive-row {
+  border-bottom: 1px solid rgba(112, 112, 125, 0.42);
+}
+
+.pill-primary {
+  border-radius: 32px;
+  background: #5266eb;
+  color: #ffffff;
+  padding: 16px 24px;
+  font-size: 16px;
+  font-weight: 480;
+}
+
+.pill-secondary {
+  border-radius: 40px;
+  background: rgba(205, 221, 255, 0.12);
+  color: #ededf3;
+  padding: 16px 24px;
+  font-size: 16px;
+  font-weight: 420;
+  border: 1px solid rgba(205, 221, 255, 0.16);
+}
+
+.eyebrow {
+  color: #c3c3cc;
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+@keyframes backtest-progress-indet {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(380%);
+  }
+}
+
+.backtest-progress-indeterminate-bar {
+  animation: backtest-progress-indet 1.25s ease-in-out infinite;
+}

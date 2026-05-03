@@ -6,7 +6,7 @@ Computes strength metrics for asset groups to determine which groups
 should be activated in the portfolio.
 
 Key Metrics:
-- Excess return vs benchmark (QQQ)
+- Excess return vs benchmark (single ticker or equal-weight composite)
 - Robust Information Ratio (using MAD)
 - Group ranking
 
@@ -144,11 +144,22 @@ def compute_excess_returns(
 # Group Strength Computation
 # ============================================================================
 
+def synthetic_equal_weight_benchmark_prices(
+    prices: Dict[str, pd.Series],
+    benchmark_symbols: List[str],
+) -> Optional[pd.Series]:
+    """Synthetic price path from equal-weight daily returns (strong-signal return ratios)."""
+    rets = compute_group_returns(prices, benchmark_symbols, lookback_periods=None)
+    if len(rets) == 0 or rets.dropna().empty:
+        return None
+    return (1 + rets.fillna(0)).cumprod() * 100.0
+
+
 def compute_group_strength(
     prices: Dict[str, pd.Series],
     group_name: str,
     group_symbols: List[str],
-    benchmark_symbol: str,
+    benchmark_symbols: List[str],
     lookback_periods: int,
     robust: bool = True,
 ) -> GroupStrengthMetrics:
@@ -159,7 +170,7 @@ def compute_group_strength(
         prices: Dict mapping symbol → price series
         group_name: Name of the group
         group_symbols: List of symbols in this group
-        benchmark_symbol: Benchmark symbol (e.g., "QQQ")
+        benchmark_symbols: Benchmark constituents (equal-weight composite if multiple)
         lookback_periods: Lookback window (in periods)
         robust: Whether to use robust IR (MAD-based)
     
@@ -168,12 +179,11 @@ def compute_group_strength(
     
     Examples:
         >>> metrics = compute_group_strength(
-        ...     prices, "group_a", ["AAPL", "MSFT"], "QQQ", 12
+        ...     prices, "group_a", ["AAPL", "MSFT"], ["QQQ"], 12
         ... )
         >>> print(f"IR: {metrics.information_ratio:.2f}")
     """
-    # Check if benchmark exists
-    if benchmark_symbol not in prices:
+    if not benchmark_symbols or not any(sym in prices for sym in benchmark_symbols):
         return GroupStrengthMetrics(
             group_name=group_name,
             excess_return=0.0,
@@ -195,12 +205,7 @@ def compute_group_strength(
             lookback_periods=len(group_returns),
         )
     
-    # Get benchmark returns
-    benchmark_series = prices[benchmark_symbol]
-    if lookback_periods is not None:
-        benchmark_series = benchmark_series.tail(lookback_periods)
-    
-    benchmark_returns = benchmark_series.pct_change()
+    benchmark_returns = compute_group_returns(prices, benchmark_symbols, lookback_periods)
     
     # Compute excess returns
     excess_returns = compute_excess_returns(group_returns, benchmark_returns)
@@ -366,7 +371,8 @@ def analyze_group_strength(
         >>> print(f"IR: {metrics.information_ratio:.2f}")
     """
     # Get configuration
-    benchmark_symbol = config.benchmark.excess_return_benchmark
+    bench_syms = config.benchmark.resolved_benchmark_symbols()
+    bench_label = config.benchmark.benchmark_display_label()
     lookback_periods = config.group_strength.lookback_weeks
     ranking_metric = config.group_strength.metric
     trend_filter = config.group_strength.trend_filter
@@ -380,7 +386,7 @@ def analyze_group_strength(
             prices=prices,
             group_name=group_name,
             group_symbols=group_config.symbols,
-            benchmark_symbol=benchmark_symbol,
+            benchmark_symbols=bench_syms,
             lookback_periods=lookback_periods,
             robust=(config.ranking.robust if hasattr(config, 'ranking') else True),
         )
@@ -411,7 +417,7 @@ def analyze_group_strength(
         ranked_groups=ranked_groups,
         active_groups=active_groups,
         as_of_date=as_of_date,
-        benchmark_symbol=benchmark_symbol,
+        benchmark_symbol=bench_label,
     )
 
 
