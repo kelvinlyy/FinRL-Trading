@@ -22,7 +22,6 @@ import re
 import subprocess
 import sys
 from typing import Optional
-from typing import Optional
 
 # Import project modules
 try:

@@ -37,7 +37,7 @@ def create_strategy(strategy_type: str, config: Optional[StrategyConfig] = None)
         from strategies.ml_strategy import MLStockSelectorStrategy
         registry["ml_strategy"] = MLStockSelectorStrategy
         registry["ml_stock_selector"] = MLStockSelectorStrategy
-    except Exception:
+    except (ImportError, Exception):
         pass
 
     strategy_cls = registry.get(strategy_type)
