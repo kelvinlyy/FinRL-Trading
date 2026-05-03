@@ -19,6 +19,11 @@ GROUP_MEMBERS = {
     "Defensive": ["TLT", "IEF", "XLU", "XLV", "IAU", "SHY", "UUP"],
 }
 
+# Must match typical Adaptive Rotation config (e.g. max_active_groups: 2 in YAML).
+# Residual small weights in a 3rd group can still be > 0 after rebalances; the chart
+# should only mark the top-N groups by *total* weight as "activated".
+MAX_TIMELINE_ACTIVE_GROUPS = 2
+
 
 @dataclass(frozen=True)
 class BacktestRun:
@@ -185,14 +190,35 @@ def _group_timeline(weights_df: pd.DataFrame) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     weight_eps = 1e-9
     for _, row in df.iterrows():
+        # Per-group capital weight (sum of member positions)
+        group_totals: dict[str, float] = {}
         for group, symbols in GROUP_MEMBERS.items():
-            held: list[str] = []
+            total = 0.0
             for symbol in symbols:
                 col = lookup.get(symbol.upper().strip())
                 if col is None:
                     continue
-                if _to_float(row.get(col, 0)) > weight_eps:
-                    held.append(symbol)
+                total += _to_float(row.get(col, 0))
+            group_totals[group] = total
+
+        # At most MAX_TIMELINE_ACTIVE_GROUPS with non-trivial weight (matches strategy design)
+        ranked = sorted(
+            group_totals.items(),
+            key=lambda x: (-x[1], x[0]),
+        )
+        active_group_names = {
+            g for g, t in ranked[:MAX_TIMELINE_ACTIVE_GROUPS] if t > weight_eps
+        }
+
+        for group, symbols in GROUP_MEMBERS.items():
+            held: list[str] = []
+            if group in active_group_names:
+                for symbol in symbols:
+                    col = lookup.get(symbol.upper().strip())
+                    if col is None:
+                        continue
+                    if _to_float(row.get(col, 0)) > weight_eps:
+                        held.append(symbol)
             rows.append({
                 "date": row["date"].strftime("%Y-%m-%d"),
                 "group": group,
