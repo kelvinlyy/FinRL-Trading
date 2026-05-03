@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import type { DrawdownPoint, EquityPoint, VisualizationData } from "@/lib/types";
+import type { DrawdownPoint, EquityPoint, GroupActivation, VisualizationData } from "@/lib/types";
 
 type Props = {
   data: VisualizationData;
@@ -115,6 +115,74 @@ function drawdownFromEquity(equity: EquityPoint[]): DrawdownPoint[] {
   });
 }
 
+type GroupSegment = { start: string; end: string; held_stocks: string[] };
+
+/**
+ * Merge sparse rebalance rows into contiguous activation intervals on the equity date axis.
+ * Extends the first interval left to `chartStart` and the last right to `chartEnd` so early
+ * portfolio exposure is visible from day one of the chart.
+ */
+function buildGroupActivationSegments(
+  timeline: GroupActivation[],
+  chartStart: string,
+  chartEnd: string,
+  groupName: string,
+): GroupSegment[] {
+  const rows = timeline
+    .filter((r) => r.group === groupName && r.held_stocks.length > 0)
+    .sort((a, b) => toDateValue(a.date) - toDateValue(b.date));
+  if (!rows.length) return [];
+
+  const equityDates = timeline
+    .map((r) => r.date)
+    .filter((d, i, arr) => arr.indexOf(d) === i)
+    .sort((a, b) => toDateValue(a) - toDateValue(b));
+
+  const dateRank = new Map(equityDates.map((d, i) => [d, i]));
+
+  const segments: GroupSegment[] = [];
+  let runStart = rows[0].date;
+  let runEnd = rows[0].date;
+  let runHeld = [...rows[0].held_stocks];
+
+  const flushRun = () => {
+    segments.push({ start: runStart, end: runEnd, held_stocks: runHeld });
+  };
+
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1];
+    const cur = rows[i];
+    const ri = dateRank.get(prev.date);
+    const rj = dateRank.get(cur.date);
+    const consecutive =
+      ri !== undefined &&
+      rj !== undefined &&
+      rj === ri + 1 &&
+      JSON.stringify([...prev.held_stocks].sort()) === JSON.stringify([...cur.held_stocks].sort());
+
+    if (consecutive) {
+      runEnd = cur.date;
+    } else {
+      flushRun();
+      runStart = cur.date;
+      runEnd = cur.date;
+      runHeld = [...cur.held_stocks];
+    }
+  }
+  flushRun();
+
+  const t0 = toDateValue(chartStart);
+  const t1 = toDateValue(chartEnd);
+  if (segments.length && toDateValue(segments[0].start) > t0) {
+    segments[0] = { ...segments[0], start: chartStart };
+  }
+  if (segments.length && toDateValue(segments[segments.length - 1].end) < t1) {
+    const last = segments.length - 1;
+    segments[last] = { ...segments[last], end: chartEnd };
+  }
+  return segments;
+}
+
 export function InteractiveBacktestChart({ data }: Props) {
   const initialCapital = data.initial_capital ?? 1000;
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -222,6 +290,20 @@ export function InteractiveBacktestChart({ data }: Props) {
 
   const totalHeight = equityHeight + drawdownHeight + groupsHeight;
   const xTicks = data.equity.filter((_, index) => index % Math.ceil(data.equity.length / 6) === 0);
+
+  const chartDateRange = useMemo(() => {
+    const eq = data.equity;
+    if (!eq.length) return { start: "", end: "" };
+    return { start: eq[0].date, end: eq[eq.length - 1].date };
+  }, [data.equity]);
+
+  const groupActivationSegments = useMemo(() => {
+    const { start, end } = chartDateRange;
+    if (!start || !end) return {} as Record<string, GroupSegment[]>;
+    return Object.fromEntries(
+      groups.map((g) => [g, buildGroupActivationSegments(data.group_timeline, start, end, g)]),
+    ) as Record<string, GroupSegment[]>;
+  }, [data.group_timeline, chartDateRange.start, chartDateRange.end]);
 
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];
@@ -443,7 +525,7 @@ export function InteractiveBacktestChart({ data }: Props) {
             ) : null}
             {groups.map((group, groupIndex) => {
               const y = 30 + groupIndex * 45;
-              const rows = data.group_timeline.filter((item) => item.group === group && item.held_stocks.length > 0);
+              const segments = groupActivationSegments[group] ?? [];
               return (
                 <g key={group}>
                   <text
@@ -454,15 +536,12 @@ export function InteractiveBacktestChart({ data }: Props) {
                   >
                     {group}
                   </text>
-                  {rows.map((row) => {
-                    const x0 = geometry.groupX(row.date);
-                    const next = data.group_timeline.find(
-                      (candidate) => candidate.group === group && toDateValue(candidate.date) > toDateValue(row.date),
-                    );
-                    const x1 = next ? geometry.groupX(next.date) : x0 + 6;
+                  {segments.map((seg) => {
+                    const x0 = geometry.groupX(seg.start);
+                    const x1 = geometry.groupX(seg.end);
                     return (
                       <rect
-                        key={`${group}-${row.date}`}
+                        key={`${group}-${seg.start}-${seg.end}`}
                         x={x0}
                         y={y}
                         width={Math.max(4, x1 - x0)}
@@ -470,7 +549,7 @@ export function InteractiveBacktestChart({ data }: Props) {
                         fill={groupIndex === 0 ? "#5266eb" : groupIndex === 1 ? "#8b7654" : "#5fa58c"}
                         opacity="0.75"
                       >
-                        <title>{`${formatDate(row.date)} · ${group}: ${row.held_stocks.join(", ")}`}</title>
+                        <title>{`${formatDate(seg.start)} → ${formatDate(seg.end)} · ${group}: ${seg.held_stocks.join(", ")}`}</title>
                       </rect>
                     );
                   })}

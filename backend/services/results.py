@@ -153,19 +153,48 @@ def _compute_equity(weights_df: pd.DataFrame) -> pd.DataFrame:
     return equity.reset_index()
 
 
-def _group_timeline(weights_df: pd.DataFrame) -> list[dict[str, Any]]:
+def _normalize_weights_frame(weights_df: pd.DataFrame) -> pd.DataFrame:
+    """Strip column names, sort by date, and build case-insensitive symbol lookup."""
+    df = weights_df.copy()
+    df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+    if "date" not in df.columns:
+        return df
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").reset_index(drop=True)
+    return df
+
+
+def _asset_columns(df: pd.DataFrame) -> list[str]:
     meta_cols = {"date", "cash", "regime"}
-    asset_cols = [column for column in weights_df.columns if column not in meta_cols]
-    rows = []
-    for _, row in weights_df.iterrows():
+    return [c for c in df.columns if c not in meta_cols]
+
+
+def _canonical_symbol_lookup(asset_cols: list[str]) -> dict[str, str]:
+    """Map UPPER(symbol) -> actual CSV column name (handles spacing/case drift)."""
+    out: dict[str, str] = {}
+    for col in asset_cols:
+        key = col.upper().strip()
+        out.setdefault(key, col)
+    return out
+
+
+def _group_timeline(weights_df: pd.DataFrame) -> list[dict[str, Any]]:
+    df = _normalize_weights_frame(weights_df)
+    asset_cols = _asset_columns(df)
+    lookup = _canonical_symbol_lookup(asset_cols)
+    rows: list[dict[str, Any]] = []
+    weight_eps = 1e-9
+    for _, row in df.iterrows():
         for group, symbols in GROUP_MEMBERS.items():
-            held = [
-                symbol
-                for symbol in symbols
-                if symbol in asset_cols and _to_float(row.get(symbol, 0)) > 0
-            ]
+            held: list[str] = []
+            for symbol in symbols:
+                col = lookup.get(symbol.upper().strip())
+                if col is None:
+                    continue
+                if _to_float(row.get(col, 0)) > weight_eps:
+                    held.append(symbol)
             rows.append({
-                "date": pd.to_datetime(row["date"]).strftime("%Y-%m-%d"),
+                "date": row["date"].strftime("%Y-%m-%d"),
                 "group": group,
                 "active": bool(held),
                 "held_stocks": held,
@@ -223,7 +252,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
             "trades": read_trade_log(run),
         }
 
-    weights_df = pd.read_csv(run.weights_path)
+    weights_df = _normalize_weights_frame(pd.read_csv(run.weights_path))
     equity_df = _compute_equity(weights_df)
     strategy = equity_df["strategy"]
     drawdown = (strategy - strategy.cummax()) / strategy.cummax()
