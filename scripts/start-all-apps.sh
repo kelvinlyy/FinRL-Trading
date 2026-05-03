@@ -68,8 +68,13 @@ echo "[start-all-apps] Using Python: $PY"
 echo "[start-all-apps] Using frontend: $FRONTEND_DIR"
 
 echo "[start-all-apps] Starting uvicorn on :8000 ..."
+UVICORN_RELOAD=()
+if [[ -d "$ROOT/apps/backend" ]]; then
+  UVICORN_RELOAD+=(--reload-dir "$ROOT/apps/backend")
+fi
 PYTHONPATH="$(uvicorn_pythonpath)" nohup "$PY" -m uvicorn backend.main:app \
   --host 0.0.0.0 --port 8000 --reload \
+  "${UVICORN_RELOAD[@]}" \
   > /tmp/finrl-uvicorn.log 2>&1 &
 echo "  pid $!  log /tmp/finrl-uvicorn.log"
 

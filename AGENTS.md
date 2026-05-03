@@ -8,7 +8,7 @@ FinRL-X is a Python-based quantitative trading platform. The core development wo
 
 ### Mandatory: restart dev servers after code changes
 
-Whenever you **edit** `backend/`, `frontend/`, `scripts/restart-dev-stack.sh`, or anything that affects the running API or Next app, you **must** before finishing the turn:
+Whenever you **edit** `apps/backend/`, `apps/frontend/`, `scripts/restart-dev-stack.sh`, or anything that affects the running API or Next app, you **must** before finishing the turn:
 
 1. Run **`./scripts/restart-dev-stack.sh`** from the repo root (use **`--clean-next`** if the user reported Next 500 / missing chunk errors).
 2. Confirm smoke checks pass (`GET /docs` and `GET /` return 200 in script output); if not, fix and retry.
@@ -22,15 +22,15 @@ Before telling the user that backend or frontend work is **done**, run checks so
 
 | Change touched | Run before responding |
 |----------------|----------------------|
-| **`frontend/`** | `./scripts/verify-frontend.sh` (runs **`npm run clean`** then **`npm run build`** to avoid stale `.next` flakes). |
-| **`backend/`** | `python3 -m py_compile` on edited `.py` files, or `pytest` / smoke **`curl http://127.0.0.1:8000/docs`** after **`restart-dev-stack.sh`**. |
+| **`apps/frontend/`** | `./scripts/verify-frontend.sh` (runs **`npm run clean`** then **`npm run build`** to avoid stale `.next` flakes). |
+| **`apps/backend/`** | `python3 -m py_compile` on edited `.py` files, or `pytest` / smoke **`curl http://127.0.0.1:8000/docs`** after **`restart-dev-stack.sh`**. |
 | **Both** | Both rows above. |
 
 Do **not** claim the UI “should work” without at least **frontend build success** when TS/React changed. Fix failures before ending the turn.
 
 ### Mandatory: visual artifacts for UI changes
 
-Whenever you change anything the user **sees** (`frontend/` components, pages, styles, chart SVG, or API fields that only affect the chart/report UI), you **must** before ending the turn:
+Whenever you change anything the user **sees** (`apps/frontend/` components, pages, styles, chart SVG, or API fields that only affect the chart/report UI), you **must** before ending the turn:
 
 1. **`./scripts/restart-dev-stack.sh`** (so the running app matches the code).
 2. **`./scripts/capture-results-ui.sh`** with output under **`/opt/cursor/artifacts/`** when that path exists, otherwise **`/tmp/`** (example: `./scripts/capture-results-ui.sh /opt/cursor/artifacts/results-ui.png`).
@@ -41,7 +41,7 @@ This is required so the user does not have to ask for proof that the change is v
 ### Environment
 
 - **Python 3.11+** is required (`python_requires=">=3.11"` in `setup.py`).
-- Set `PYTHONPATH=/workspace/src:/workspace` before running any Python commands (CLI, Streamlit, strategy runners).
+- Set `PYTHONPATH=/workspace/src:/workspace` before running any Python commands (CLI, Streamlit, strategy runners). For the FastAPI app, include **`/workspace/apps`** so `import backend` resolves (`PYTHONPATH=/workspace/apps:/workspace:/workspace/src`).
 - Copy `.env.example` to `.env` if it doesn't exist. The `.env` file is required for configuration; default values work for backtesting (no API keys needed).
 - The `requirements.txt` lists `finnhub>=2.4.19` but the correct PyPI package is `finnhub-python`. Install it separately: `pip install finnhub-python`.
 
@@ -61,7 +61,7 @@ If the frontend serves stale chunks or 500s (`Cannot find module './NNN.js'`):
 ./scripts/restart-dev-stack.sh --clean-next
 ```
 
-**Manual equivalents:** kill ports **8000** (uvicorn) and **3000** (next); start backend with `PYTHONPATH=/workspace:/workspace/src python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload`; start frontend with `cd frontend && npm run dev`.
+**Manual equivalents:** kill ports **8000** (uvicorn) and **3000** (next); start backend with `PYTHONPATH=/workspace/apps:/workspace:/workspace/src python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload`; start frontend with `cd apps/frontend && npm run dev`.
 
 Agents cannot click “refresh” in the user’s browser; after restart, **tell the user to hard-refresh** `http://localhost:3000` (and `/results`).
 
@@ -70,7 +70,7 @@ Agents cannot click “refresh” in the user’s browser; after restart, **tell
 
 | Task                | Command                                                                                        |
 | ------------------- | ---------------------------------------------------------------------------------------------- |
-| **Restart API + Next** | `./scripts/restart-dev-stack.sh` (after backend/frontend changes; `--clean-next` if Next is broken) |
+| **Restart API + Next** | `./scripts/restart-dev-stack.sh` (after `apps/backend` or `apps/frontend` changes; `--clean-next` if Next is broken) |
 | **Verify frontend** | `./scripts/verify-frontend.sh` (required before saying frontend work is complete) |
 | **Screenshot /results** | `./scripts/capture-results-ui.sh /opt/cursor/artifacts/results-ui.png` (after restart; required for visible UI changes) |
 | Install deps        | `pip install -r requirements.txt` (skip finnhub line) then `pip install finnhub-python pyyaml` |
