@@ -16,16 +16,11 @@ resolve_frontend_dir() {
     echo "[dev-paths] ERROR: FINRL_FRONTEND_DIR=${FINRL_FRONTEND_DIR} has no package.json." >&2
     return 1
   fi
-  # Prefer canonical app tree when present (monorepo / apps layout).
   if [[ -f "$ROOT/apps/frontend/package.json" ]]; then
     echo "$ROOT/apps/frontend"
     return 0
   fi
-  if [[ -f "$ROOT/frontend/package.json" ]]; then
-    echo "$ROOT/frontend"
-    return 0
-  fi
-  echo "[dev-paths] ERROR: no frontend with package.json (expected apps/frontend or frontend)." >&2
+  echo "[dev-paths] ERROR: no frontend with package.json (expected apps/frontend)." >&2
   return 1
 }
 
