@@ -364,6 +364,43 @@ export function InteractiveBacktestChart({ data }: Props) {
     ) as Record<string, GroupSegment[]>;
   }, [groupTimeline, equityDatesOrdered]);
 
+  /** Earliest rebalance row where any group shows holdings (after max-groups cap). */
+  const firstGroupActivationDate = useMemo(() => {
+    let best: string | null = null;
+    for (const row of groupTimeline) {
+      if (row.held_stocks.length === 0) continue;
+      if (!best || toDateValue(row.date) < toDateValue(best)) best = row.date;
+    }
+    return best;
+  }, [groupTimeline]);
+
+  /** Grey band: period with no group-lane data (equity may still be shown). */
+  const inactiveGroupLaneShade = useMemo(() => {
+    if (geometry.empty || !data.equity.length) return null;
+    const chartStart = data.equity[0].date;
+    const xRight = width - margin.right;
+    const x0 = GROUP_LABEL_GUTTER;
+
+    if (!firstGroupActivationDate) {
+      const w = xRight - x0;
+      if (w < 3) return null;
+      return {
+        x: x0,
+        width: w,
+        title: "No group activation rows in this run’s weights export.",
+      };
+    }
+    if (toDateValue(firstGroupActivationDate) <= toDateValue(chartStart)) return null;
+    const xEnd = geometry.groupX(firstGroupActivationDate);
+    const w = xEnd - x0;
+    if (w < 3) return null;
+    return {
+      x: x0,
+      width: w,
+      title: `No activated-group weights in artifacts before ${formatDate(firstGroupActivationDate)} (equity from ${formatDate(chartStart)}).`,
+    };
+  }, [geometry, data.equity, firstGroupActivationDate]);
+
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];
     const rows: { key: SeriesKey; label: string; color: string; enabled: boolean }[] = [
@@ -572,6 +609,29 @@ export function InteractiveBacktestChart({ data }: Props) {
           </g>
 
           <g transform={`translate(0 ${equityHeight + drawdownHeight})`}>
+            {inactiveGroupLaneShade ? (
+              <g>
+                <rect
+                  x={inactiveGroupLaneShade.x}
+                  y={10}
+                  width={inactiveGroupLaneShade.width}
+                  height={groupsHeight - 28}
+                  fill="rgba(112, 112, 125, 0.22)"
+                  stroke="rgba(112, 112, 125, 0.35)"
+                  strokeWidth={1}
+                >
+                  <title>{inactiveGroupLaneShade.title}</title>
+                </rect>
+                <text
+                  x={inactiveGroupLaneShade.x + 8}
+                  y={26}
+                  className="fill-silver text-[10px]"
+                  opacity={0.85}
+                >
+                  No group lane data yet
+                </text>
+              </g>
+            ) : null}
             {!geometry.empty ? (
               <line
                 x1={GROUP_LABEL_GUTTER}
