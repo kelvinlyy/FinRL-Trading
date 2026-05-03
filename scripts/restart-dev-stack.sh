@@ -32,9 +32,17 @@ if "$CLEAN_NEXT"; then
   rm -rf "$ROOT/apps/frontend/.next"
 fi
 
-echo "[restart-dev-stack] Starting uvicorn on :8000 ..."
-PYTHONPATH="$ROOT/apps:$ROOT:$ROOT/src" nohup python3 -m uvicorn backend.main:app \
+PY="${ROOT}/.venv/bin/python3"
+if [[ ! -x "$PY" ]]; then
+  PY="python3"
+fi
+
+echo "[restart-dev-stack] Starting uvicorn on :8000 (python: $PY) ..."
+# Only watch apps/backend — strategy backtests write under src/ and data/; watching the
+# whole repo would reload the API mid-job and drop in-memory backtest job state.
+PYTHONPATH="$ROOT/apps:$ROOT:$ROOT/src" nohup "$PY" -m uvicorn backend.main:app \
   --host 0.0.0.0 --port 8000 --reload \
+  --reload-dir "$ROOT/apps/backend" \
   > /tmp/finrl-uvicorn.log 2>&1 &
 echo "  pid $!  log /tmp/finrl-uvicorn.log"
 

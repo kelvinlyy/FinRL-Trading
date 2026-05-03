@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from backend.api.routes_backtest import router as backtest_router
+from backend.api.routes_config import router as config_router
 from backend.api.routes_results import router as results_router
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,6 +28,8 @@ app.add_middleware(
 )
 
 app.include_router(results_router)
+app.include_router(backtest_router)
+app.include_router(config_router)
 app.mount("/artifacts", StaticFiles(directory=str(_ARTIFACTS_DIR)), name="artifacts")
 
 

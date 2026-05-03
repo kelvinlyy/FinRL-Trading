@@ -1,13 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import type { DrawdownPoint, EquityPoint, GroupActivation, VisualizationData } from "@/lib/types";
+import type { DrawdownPoint, EquityPoint, EquitySeriesMeta, GroupActivation, VisualizationData } from "@/lib/types";
 
 type Props = {
   data: VisualizationData;
 };
-
-type SeriesKey = "strategy" | "SPY" | "QQQ";
 
 const width = 1120;
 const equityHeight = 360;
@@ -25,13 +23,23 @@ const regimeColors: Record<string, string> = {
   fast_risk_off: "rgba(205, 120, 160, 0.16)",
 };
 
-const LINE_COLORS: Record<SeriesKey, string> = {
-  strategy: "#5266eb",
-  SPY: "#c3c3cc",
-  QQQ: "#f0b95b",
-};
-
 const groups = ["Growth Tech", "Real Assets", "Defensive"];
+
+function inferEquitySeries(equity: EquityPoint[]): EquitySeriesMeta[] {
+  const base: EquitySeriesMeta[] = [{ key: "strategy", label: "Strategy", color: "#5266eb" }];
+  if (!equity.length) return base;
+  const hasFinite = (key: string) =>
+    equity.some((p) => {
+      const v = (p as Record<string, unknown>)[key];
+      return typeof v === "number" && Number.isFinite(v);
+    });
+  if (hasFinite("benchmark_composite")) {
+    base.push({ key: "benchmark_composite", label: "Benchmark", color: "#d4a534" });
+  }
+  if (hasFinite("SPY")) base.push({ key: "SPY", label: "SPY", color: "#c3c3cc" });
+  if (hasFinite("QQQ")) base.push({ key: "QQQ", label: "QQQ", color: "#f0b95b" });
+  return base;
+}
 
 function toDateValue(date: string) {
   return new Date(date).getTime();
@@ -95,10 +103,10 @@ function formatUsdAxis(value: number) {
   return formatUsd(value);
 }
 
-function seriesValue(point: EquityPoint, key: SeriesKey): number | null {
+function seriesValue(point: EquityPoint, key: string): number | null {
   if (key === "strategy") return point.strategy;
-  const v = point[key];
-  return v === undefined || v === null ? null : v;
+  const v = (point as unknown as Record<string, unknown>)[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 /** Same formula as backend when API omits or short-changes drawdown vs equity. */
@@ -242,11 +250,15 @@ export function InteractiveBacktestChart({ data }: Props) {
   const initialCapital = data.initial_capital ?? 1000;
   const maxTimelineGroups = data.max_timeline_active_groups ?? DEFAULT_MAX_ACTIVE_GROUPS;
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [enabled, setEnabled] = useState<Record<SeriesKey, boolean>>({
-    strategy: true,
-    SPY: true,
-    QQQ: true,
-  });
+  /** When true, series `key` is toggled off in the chart. */
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+
+  const seriesList = useMemo((): EquitySeriesMeta[] => {
+    if (data.equity_series && data.equity_series.length > 0) return data.equity_series;
+    return inferEquitySeries(data.equity);
+  }, [data.equity_series, data.equity]);
+
+  const seriesOn = (key: string) => !hidden[key];
 
   const groupTimeline = useMemo(
     () => enforceTimelineMaxGroups(data.group_timeline, maxTimelineGroups),
@@ -283,11 +295,12 @@ export function InteractiveBacktestChart({ data }: Props) {
     const tMin = Math.min(...times);
     const tMax = Math.max(...times);
     const x = makeScaler(tMin, tMax, margin.left, width - margin.right);
-    const yValues = data.equity.flatMap((point) => [
-      point.strategy,
-      point.SPY ?? point.strategy,
-      point.QQQ ?? point.strategy,
-    ]).filter((v) => Number.isFinite(v));
+    const yValues = data.equity.flatMap((point) =>
+      seriesList
+        .filter((s) => seriesOn(s.key))
+        .map((s) => seriesValue(point, s.key))
+        .filter((v): v is number => v !== null && Number.isFinite(v)),
+    );
     const yMin = yValues.length ? Math.min(...yValues) * 0.96 : 0;
     const yMax = yValues.length ? Math.max(...yValues) * 1.04 : 1;
     const y = makeScaler(yMin, yMax, equityHeight - margin.bottom, margin.top);
@@ -313,7 +326,7 @@ export function InteractiveBacktestChart({ data }: Props) {
       groupX,
       empty: false as const,
     };
-  }, [data, drawdownSeries]);
+  }, [data.equity, drawdownSeries, seriesList, hidden]);
 
   const firstPoint = data.equity[0];
   const hovered = hoverIndex !== null && hoverIndex >= 0 ? data.equity[hoverIndex] : null;
@@ -449,12 +462,8 @@ export function InteractiveBacktestChart({ data }: Props) {
 
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];
-    const rows: { key: SeriesKey; label: string; color: string; enabled: boolean }[] = [
-      { key: "strategy", label: "Strategy", color: LINE_COLORS.strategy, enabled: enabled.strategy },
-      { key: "SPY", label: "SPY", color: LINE_COLORS.SPY, enabled: enabled.SPY },
-      { key: "QQQ", label: "QQQ", color: LINE_COLORS.QQQ, enabled: enabled.QQQ },
-    ];
-    return rows.map(({ key, label, color, enabled: on }) => {
+    return seriesList.map(({ key, label, color }) => {
+      const on = seriesOn(key);
       const mult = seriesValue(hovered, key);
       const mult0 = seriesValue(firstPoint, key);
       const prevMult = prevPoint ? seriesValue(prevPoint, key) : null;
@@ -462,7 +471,7 @@ export function InteractiveBacktestChart({ data }: Props) {
         return { key, label, color, on, dollars: null as string | null, sinceStart: null as string | null, daily: null as string | null };
       }
       const dollars = mult * initialCapital;
-      const sinceStart = (mult / mult0 - 1);
+      const sinceStart = mult / mult0 - 1;
       const daily =
         prevMult !== null && prevMult !== 0 && prevPoint ? (mult / prevMult - 1) : null;
       return {
@@ -475,7 +484,7 @@ export function InteractiveBacktestChart({ data }: Props) {
         daily: daily !== null ? formatPct(daily) : "—",
       };
     });
-  }, [hovered, firstPoint, prevPoint, enabled, initialCapital]);
+  }, [hovered, firstPoint, prevPoint, initialCapital, seriesList, hidden]);
 
   return (
     <div className="panel overflow-hidden rounded-md">
@@ -499,14 +508,13 @@ export function InteractiveBacktestChart({ data }: Props) {
         {/* Legend row sits above the plot so it never overlaps series data */}
         <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-lead/25 pt-5">
           <span className="text-caption uppercase tracking-[0.2em] text-silver">Legend</span>
-          {(["strategy", "SPY", "QQQ"] as const).map((key) => {
-            const active = enabled[key];
-            const hex = LINE_COLORS[key];
+          {seriesList.map(({ key, label, color: hex }) => {
+            const active = seriesOn(key);
             return (
               <button
                 key={key}
                 type="button"
-                onClick={() => setEnabled((prev) => ({ ...prev, [key]: !prev[key] }))}
+                onClick={() => setHidden((prev) => ({ ...prev, [key]: !prev[key] }))}
                 className={`rounded-[32px] border-2 px-4 py-2 text-caption uppercase tracking-[0.18em] transition-colors`}
                 style={{
                   borderColor: active ? hex : "rgba(156, 163, 175, 0.45)",
@@ -515,7 +523,7 @@ export function InteractiveBacktestChart({ data }: Props) {
                 }}
               >
                 <span className="mr-2 inline-block h-2 w-2 rounded-full align-middle" style={{ backgroundColor: active ? hex : "#6b7280" }} />
-                {key === "strategy" ? "Strategy" : key}
+                {label}
               </button>
             );
           })}
@@ -585,32 +593,25 @@ export function InteractiveBacktestChart({ data }: Props) {
                 </g>
               ))}
 
-            {enabled.strategy ? (
-              <path
-                d={pathFor(data.equity.map((p) => ({ date: p.date, value: p.strategy })), geometry.x, geometry.y)}
-                fill="none"
-                stroke={LINE_COLORS.strategy}
-                strokeWidth="3"
-              />
-            ) : null}
-            {enabled.SPY ? (
-              <path
-                d={pathFor(data.equity.map((p) => ({ date: p.date, value: p.SPY ?? null })), geometry.x, geometry.y)}
-                fill="none"
-                stroke={LINE_COLORS.SPY}
-                strokeWidth="1.5"
-                opacity="0.85"
-              />
-            ) : null}
-            {enabled.QQQ ? (
-              <path
-                d={pathFor(data.equity.map((p) => ({ date: p.date, value: p.QQQ ?? null })), geometry.x, geometry.y)}
-                fill="none"
-                stroke={LINE_COLORS.QQQ}
-                strokeWidth="1.5"
-                opacity="0.95"
-              />
-            ) : null}
+            {seriesList.map(({ key, color }) => {
+              if (!seriesOn(key)) return null;
+              const strokeW = key === "strategy" ? "3" : "1.5";
+              const opacity = key === "strategy" ? "1" : key === "benchmark_composite" ? "0.92" : "0.88";
+              return (
+                <path
+                  key={key}
+                  d={pathFor(
+                    data.equity.map((p) => ({ date: p.date, value: seriesValue(p, key) })),
+                    geometry.x,
+                    geometry.y,
+                  )}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={strokeW}
+                  opacity={opacity}
+                />
+              );
+            })}
 
             {hovered ? (
               <g>
@@ -623,15 +624,23 @@ export function InteractiveBacktestChart({ data }: Props) {
                   strokeOpacity="0.35"
                   strokeDasharray="4 4"
                 />
-                {enabled.strategy ? (
-                  <circle cx={geometry.x(toDateValue(hovered.date))} cy={geometry.y(hovered.strategy)} r="5" fill={LINE_COLORS.strategy} stroke="#0c0e14" strokeWidth="1" />
-                ) : null}
-                {enabled.SPY && hovered.SPY != null ? (
-                  <circle cx={geometry.x(toDateValue(hovered.date))} cy={geometry.y(hovered.SPY)} r="4" fill={LINE_COLORS.SPY} stroke="#0c0e14" strokeWidth="1" />
-                ) : null}
-                {enabled.QQQ && hovered.QQQ != null ? (
-                  <circle cx={geometry.x(toDateValue(hovered.date))} cy={geometry.y(hovered.QQQ)} r="4" fill={LINE_COLORS.QQQ} stroke="#0c0e14" strokeWidth="1" />
-                ) : null}
+                {seriesList.map(({ key, color }) => {
+                  if (!seriesOn(key)) return null;
+                  const mult = seriesValue(hovered, key);
+                  if (mult === null) return null;
+                  const r = key === "strategy" ? "5" : "4";
+                  return (
+                    <circle
+                      key={`dot-${key}`}
+                      cx={geometry.x(toDateValue(hovered.date))}
+                      cy={geometry.y(mult)}
+                      r={r}
+                      fill={color}
+                      stroke="#0c0e14"
+                      strokeWidth="1"
+                    />
+                  );
+                })}
               </g>
             ) : null}
 

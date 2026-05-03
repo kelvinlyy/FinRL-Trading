@@ -35,6 +35,8 @@ history:
 # -----------------------
 benchmark:
   excess_return_benchmark: QQQ
+  excess_return_benchmark_symbols:
+    - QQQ
 
 # -----------------------
 # Asset Groups (4 buckets)

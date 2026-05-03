@@ -2,17 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import math
 import re
 from typing import Any
 
 import pandas as pd
 
+from backend.services.adaptive_yaml import load_adaptive_rotation_public
 
 # apps/backend/services/ -> repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RESULTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
 DATA_DIR = PROJECT_ROOT / "data/fmp_daily"
 RESULT_RE = re.compile(r"enhanced_backtest_(?P<start>.+)_to_(?P<end>.+)\.png$")
+WEIGHTS_RE = re.compile(r"^ars_portfolio_weights_(?P<start>.+)_to_(?P<end>.+)\.csv$")
 
 GROUP_MEMBERS = {
     "Growth Tech": ["AAPL", "MSFT", "NVDA", "META", "AMZN", "GOOGL", "TSLA"],
@@ -63,17 +66,48 @@ def _run_from_chart(chart_path: Path) -> BacktestRun | None:
     )
 
 
+def _run_from_weights(weights_path: Path) -> BacktestRun | None:
+    match = WEIGHTS_RE.match(weights_path.name)
+    if not match:
+        return None
+
+    start = match.group("start")
+    end = match.group("end")
+    run_id = f"{start}_to_{end}"
+    chart_path = RESULTS_DIR / f"enhanced_backtest_{run_id}.png"
+    return BacktestRun(
+        id=run_id,
+        start=start,
+        end=end,
+        chart_path=chart_path,
+        trade_log_path=weights_path.with_name(f"trade_log_{run_id}.csv"),
+        summary_path=weights_path.with_name(f"backtest_{run_id}.csv"),
+        weights_path=weights_path,
+    )
+
+
+def _run_mtime(run: BacktestRun) -> float:
+    paths = [run.weights_path, run.summary_path, run.chart_path]
+    mtimes = [p.stat().st_mtime for p in paths if p.exists()]
+    return max(mtimes) if mtimes else 0.0
+
+
 def list_runs() -> list[BacktestRun]:
     if not RESULTS_DIR.exists():
         return []
 
-    runs = []
+    by_id: dict[str, BacktestRun] = {}
+    for weights_path in RESULTS_DIR.glob("ars_portfolio_weights_*_to_*.csv"):
+        run = _run_from_weights(weights_path)
+        if run:
+            by_id[run.id] = run
     for chart_path in RESULTS_DIR.glob("enhanced_backtest_*_to_*.png"):
         run = _run_from_chart(chart_path)
-        if run:
-            runs.append(run)
+        if run and run.id not in by_id:
+            by_id[run.id] = run
 
-    return sorted(runs, key=lambda run: run.chart_path.stat().st_mtime, reverse=True)
+    runs = list(by_id.values())
+    return sorted(runs, key=_run_mtime, reverse=True)
 
 
 def get_run(run_id: str) -> BacktestRun | None:
@@ -105,6 +139,46 @@ def _to_float(value: Any) -> float:
         return 0.0
 
 
+def _optional_float(value: Any) -> float | None:
+    """JSON-safe optional number for benchmark lines (omit invalid / missing instead of 0)."""
+    try:
+        if pd.isna(value):
+            return None
+        f = float(value)
+        return f if math.isfinite(f) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolved_benchmark_symbols() -> tuple[list[str], str]:
+    """Symbols and label from live Adaptive Rotation YAML (matches strategy excess benchmark group)."""
+    try:
+        cfg = load_adaptive_rotation_public()
+    except (OSError, FileNotFoundError, ValueError):
+        return (["QQQ"], "QQQ")
+    syms = cfg.get("excess_return_benchmark_symbols") or []
+    if not syms:
+        one = (cfg.get("excess_return_benchmark") or "QQQ").strip()
+        syms = [one] if one else ["QQQ"]
+    label = str(cfg.get("benchmark_excess_label") or (" + ".join(syms) if len(syms) > 1 else syms[0]))
+    return (list(syms), label)
+
+
+def _normalized_buyhold(
+    equity_dates: pd.DatetimeIndex,
+    price_df: pd.DataFrame,
+    symbol: str,
+) -> pd.Series | None:
+    if symbol not in price_df.columns:
+        return None
+    series = price_df[symbol].dropna()
+    start_series = series.loc[:equity_dates[0]]
+    if start_series.empty:
+        return None
+    start_price = start_series.iloc[-1]
+    return series.reindex(equity_dates, method="ffill") / start_price
+
+
 def _load_price_frame(symbols: list[str]) -> pd.DataFrame:
     prices = {}
     for symbol in symbols:
@@ -119,13 +193,15 @@ def _load_price_frame(symbols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(prices)
 
 
-def _compute_equity(weights_df: pd.DataFrame) -> pd.DataFrame:
+def _compute_equity(weights_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     weights_df = weights_df.copy()
     weights_df["date"] = pd.to_datetime(weights_df["date"])
 
     meta_cols = {"date", "cash", "regime"}
     asset_cols = [column for column in weights_df.columns if column not in meta_cols]
-    price_df = _load_price_frame(sorted(set(asset_cols + ["SPY", "QQQ"])))
+    bench_syms, bench_label = _resolved_benchmark_symbols()
+    price_symbols = sorted(set(asset_cols) | set(bench_syms) | {"SPY", "QQQ"})
+    price_df = _load_price_frame(price_symbols)
 
     dates = weights_df["date"].to_list()
     portfolio_values = [1.0]
@@ -149,6 +225,16 @@ def _compute_equity(weights_df: pd.DataFrame) -> pd.DataFrame:
         "regime": weights_df["regime"].fillna("unknown").to_list(),
     }).set_index("date")
 
+    norm_parts: list[pd.Series] = []
+    for sym in bench_syms:
+        s = _normalized_buyhold(equity.index, price_df, sym)
+        if s is not None:
+            norm_parts.append(s)
+    if norm_parts:
+        comp = pd.concat(norm_parts, axis=1).mean(axis=1)
+        if not comp.isna().all():
+            equity["benchmark_composite"] = comp
+
     for benchmark in ["SPY", "QQQ"]:
         if benchmark not in price_df.columns:
             continue
@@ -159,7 +245,7 @@ def _compute_equity(weights_df: pd.DataFrame) -> pd.DataFrame:
         start_price = start_series.iloc[-1]
         equity[benchmark] = series.reindex(equity.index, method="ffill") / start_price
 
-    return equity.reset_index()
+    return equity.reset_index(), bench_label
 
 
 def _normalize_weights_frame(weights_df: pd.DataFrame) -> pd.DataFrame:
@@ -277,12 +363,13 @@ def run_metadata(run: BacktestRun) -> dict[str, Any]:
     summary = read_summary(run)
     trade_log = read_trade_log(run)
 
+    chart_url = f"/api/results/{run.id}/chart" if run.chart_path.exists() else ""
     return {
         "id": run.id,
         "label": run.label,
         "start": run.start,
         "end": run.end,
-        "chart_url": f"/api/results/{run.id}/chart",
+        "chart_url": chart_url,
         "trade_log_url": f"/api/results/{run.id}/trade-log",
         "summary_url": f"/api/results/{run.id}/summary",
         "weights_url": f"/api/results/{run.id}/weights",
@@ -309,25 +396,44 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
             "weights_first_date": None,
             "first_meaningful_group_holdings_date": None,
             "equity": [],
+            "equity_series": [],
             "drawdown": [],
             "group_timeline": [],
             "trades": read_trade_log(run),
         }
 
     weights_df = _normalize_weights_frame(pd.read_csv(run.weights_path))
-    equity_df = _compute_equity(weights_df)
+    equity_df, bench_label = _compute_equity(weights_df)
     strategy = equity_df["strategy"]
     drawdown = (strategy - strategy.cummax()) / strategy.cummax()
 
     equity_rows = []
     for _, row in equity_df.iterrows():
-        equity_rows.append({
+        er: dict[str, Any] = {
             "date": pd.to_datetime(row["date"]).strftime("%Y-%m-%d"),
             "strategy": _to_float(row.get("strategy")),
-            "SPY": _to_float(row.get("SPY")) if "SPY" in equity_df.columns else None,
-            "QQQ": _to_float(row.get("QQQ")) if "QQQ" in equity_df.columns else None,
             "regime": row.get("regime", "unknown"),
+        }
+        if "benchmark_composite" in equity_df.columns:
+            er["benchmark_composite"] = _optional_float(row.get("benchmark_composite"))
+        if "SPY" in equity_df.columns:
+            er["SPY"] = _optional_float(row.get("SPY"))
+        if "QQQ" in equity_df.columns:
+            er["QQQ"] = _optional_float(row.get("QQQ"))
+        equity_rows.append(er)
+
+    equity_series: list[dict[str, str]] = [
+        {"key": "strategy", "label": "Strategy", "color": "#5266eb"},
+    ]
+    if "benchmark_composite" in equity_df.columns:
+        equity_series.append({
+            "key": "benchmark_composite",
+            "label": f"Benchmark ({bench_label})",
+            "color": "#d4a534",
         })
+    for k, lab, col in (("SPY", "SPY", "#c3c3cc"), ("QQQ", "QQQ", "#f0b95b")):
+        if k in equity_df.columns:
+            equity_series.append({"key": k, "label": lab, "color": col})
 
     drawdown_rows = [
         {
@@ -347,6 +453,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
         "weights_first_date": weights_first,
         "first_meaningful_group_holdings_date": first_meaningful,
         "equity": equity_rows,
+        "equity_series": equity_series,
         "drawdown": drawdown_rows,
         "regimes": _regime_spans(equity_rows),
         "group_timeline": _group_timeline(weights_df),

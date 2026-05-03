@@ -61,3 +61,16 @@ body {
   letter-spacing: 0.24em;
   text-transform: uppercase;
 }
+
+@keyframes backtest-progress-indet {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(380%);
+  }
+}
+
+.backtest-progress-indeterminate-bar {
+  animation: backtest-progress-indet 1.25s ease-in-out infinite;
+}

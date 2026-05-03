@@ -90,8 +90,28 @@ class HistoryConfig(BaseModel):
 
 
 class BenchmarkConfig(BaseModel):
-    """Benchmark configuration"""
+    """Benchmark configuration for excess return vs rotation groups."""
+
     excess_return_benchmark: str = "QQQ"
+    excess_return_benchmark_symbols: List[str] = Field(default_factory=list, max_length=20)
+
+    def resolved_benchmark_symbols(self) -> List[str]:
+        """Symbols used for the excess-return benchmark (equal-weight composite if len > 1)."""
+        seen: set[str] = set()
+        out: List[str] = []
+        for s in self.excess_return_benchmark_symbols:
+            t = str(s).strip().upper()
+            if t and t not in seen:
+                seen.add(t)
+                out.append(t)
+        if out:
+            return out
+        one = str(self.excess_return_benchmark).strip().upper()
+        return [one] if one else ["QQQ"]
+
+    def benchmark_display_label(self) -> str:
+        syms = self.resolved_benchmark_symbols()
+        return syms[0] if len(syms) == 1 else " + ".join(syms)
 
 
 class AssetGroupConfig(BaseModel):
@@ -413,9 +433,10 @@ class AdaptiveRotationConfig(BaseModel):
         """
         required = self.get_all_symbols().copy()
         
-        # Add benchmark
-        if self.benchmark.excess_return_benchmark not in required:
-            required.append(self.benchmark.excess_return_benchmark)
+        # Add benchmark composite constituents
+        for sym in self.benchmark.resolved_benchmark_symbols():
+            if sym not in required:
+                required.append(sym)
         
         # Add market indices
         for index in ["^GSPC", "^VIX"]:
@@ -475,7 +496,7 @@ class AdaptiveRotationConfig(BaseModel):
         lines.extend([
             f"",
             f"Total Symbols: {len(self.get_all_symbols())}",
-            f"Benchmark: {self.benchmark.excess_return_benchmark}",
+            f"Benchmark (excess vs): {self.benchmark.benchmark_display_label()}",
             f"",
             f"History Required: {self.history.minimum_history_weeks} weeks",
             f"Data Start: {self.dates.start_date}",

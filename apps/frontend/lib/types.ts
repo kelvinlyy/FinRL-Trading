@@ -32,9 +32,18 @@ export type Trade = {
 export type EquityPoint = {
   date: string;
   strategy: number;
+  /** Equal-weight normalized composite of YAML excess-return benchmark symbols. */
+  benchmark_composite?: number;
   SPY?: number;
   QQQ?: number;
   regime?: string;
+};
+
+/** Declares which equity curves to draw (from API; chart falls back if absent). */
+export type EquitySeriesMeta = {
+  key: string;
+  label: string;
+  color: string;
 };
 
 export type DrawdownPoint = {
@@ -71,6 +80,8 @@ export type VisualizationData = {
    */
   first_meaningful_group_holdings_date?: string | null;
   equity: EquityPoint[];
+  /** Series order, labels, and colors for the equity chart (strategy + benchmarks). */
+  equity_series?: EquitySeriesMeta[];
   drawdown: DrawdownPoint[];
   regimes: RegimeBand[];
   group_timeline: GroupActivation[];
@@ -81,5 +92,84 @@ export type StrategyGroup = {
   name: string;
   tone: string;
   tickers: string[];
+};
+
+export type BacktestJobStatus = "queued" | "running" | "completed" | "failed";
+
+export type BacktestJobProgress = {
+  pct: number;
+  label: string;
+  phase: string;
+  indeterminate?: boolean;
+};
+
+export type BacktestJobSummary = {
+  job_id: string;
+  status: string;
+  start: string;
+  end: string;
+  updated_at?: string | null;
+  result_run_id?: string | null;
+};
+
+export type DataCoverageDetail = {
+  ok?: boolean;
+  message?: string;
+  data_dir?: string;
+  config_path?: string;
+  backtest_start?: string;
+  backtest_end?: string;
+  symbols_required?: number;
+  missing_csv_for_symbols?: string[];
+  insufficient_date_coverage?: Array<Record<string, unknown>>;
+};
+
+/** Response from GET /api/config/adaptive-rotation (live YAML + data dir scan). */
+export type AdaptiveRotationConfig = {
+  config_file: string;
+  data_daily_dir: string;
+  /** File mtime (seconds); bump remounts the editor after external saves. */
+  config_mtime?: number;
+  benchmark: Record<string, unknown>;
+  /** First symbol (legacy YAML anchor); composite uses `excess_return_benchmark_symbols`. */
+  excess_return_benchmark?: string | null;
+  /** Equal-weight excess benchmark group (group strength / IR vs this composite). */
+  excess_return_benchmark_symbols?: string[];
+  /** Human-readable composite label, e.g. `QQQ + SPY`. */
+  benchmark_excess_label?: string;
+  portfolio_fallback: {
+    enabled?: boolean | null;
+    symbols: string[];
+  };
+  asset_groups: Array<{
+    id: string;
+    title: string;
+    max_assets?: number | null;
+    symbols: string[];
+  }>;
+  baseline_price_csv_present: string[];
+  baseline_price_csv_candidates: string[];
+};
+
+/** Body for PUT /api/config/adaptive-rotation */
+export type AdaptiveRotationWritePayload = {
+  excess_return_benchmark_symbols: string[];
+  portfolio_fallback: { enabled: boolean; symbols: string[] };
+  asset_groups: Array<{ id: string; max_assets: number; symbols: string[] }>;
+};
+
+export type BacktestJob = {
+  job_id: string;
+  status: BacktestJobStatus;
+  start: string;
+  end: string;
+  created_at: string;
+  updated_at: string;
+  returncode: number | null;
+  result_run_id: string | null;
+  message: string | null;
+  stdout_tail: string | null;
+  stderr_tail: string | null;
+  progress?: BacktestJobProgress;
 };
 

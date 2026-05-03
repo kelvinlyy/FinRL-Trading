@@ -21,7 +21,11 @@ from pathlib import Path
 from .config_loader import AdaptiveRotationConfig, load_config
 from .data_preprocessor import DataPreprocessor, get_data_as_of_date
 from .market_regime import detect_market_regime
-from .group_strength import analyze_group_strength, compute_group_returns
+from .group_strength import (
+    analyze_group_strength,
+    compute_group_returns,
+    synthetic_equal_weight_benchmark_prices,
+)
 from .intra_group_ranking import IntraGroupRanker
 from .exception_framework import ExceptionDetector
 from .risk_manager import RiskManager, PositionState
@@ -384,10 +388,9 @@ class AdaptiveRotationEngine:
                         index=[as_of_date]
                     )
         
-        # Get benchmark prices for strong signal rule
-        # Use QQQ as benchmark (configurable via config in future)
-        benchmark_symbol = "QQQ"
-        benchmark_prices = prices_as_of.get(benchmark_symbol, None)
+        # Strong-signal rule: synthetic price path from equal-weight benchmark group returns
+        bench_syms = self.config.benchmark.resolved_benchmark_symbols()
+        benchmark_prices = synthetic_equal_weight_benchmark_prices(prices_as_of, bench_syms)
         
         return self.exception_detector.detect_exceptions(
             all_zscores,

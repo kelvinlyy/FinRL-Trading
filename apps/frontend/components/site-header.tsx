@@ -1,9 +1,8 @@
 import Link from "next/link";
 
 const nav = [
-  { href: "/", label: "Command" },
+  { href: "/", label: "Home" },
   { href: "/results", label: "Results" },
-  { href: "/strategy", label: "Strategy" },
 ];
 
 export function SiteHeader() {
