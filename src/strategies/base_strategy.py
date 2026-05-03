@@ -28,18 +28,19 @@ class BaseStrategy:
 
 
 def create_strategy(strategy_type: str, config: Optional[StrategyConfig] = None) -> BaseStrategy:
-    """Factory function to create strategy instances by name."""
+    """Create a strategy instance by name for web/backtest callers."""
     if config is None:
         config = StrategyConfig(name=strategy_type)
 
-    _registry: Dict[str, type] = {}
+    registry: Dict[str, type] = {}
     try:
         from strategies.ml_strategy import MLStockSelectorStrategy
-        _registry["ml_stock_selector"] = MLStockSelectorStrategy
+        registry["ml_strategy"] = MLStockSelectorStrategy
+        registry["ml_stock_selector"] = MLStockSelectorStrategy
     except (ImportError, Exception):
         pass
 
-    strategy_cls = _registry.get(strategy_type)
+    strategy_cls = registry.get(strategy_type)
     if strategy_cls is not None:
         return strategy_cls(config)
 

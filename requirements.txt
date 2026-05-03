@@ -13,6 +13,8 @@ seaborn>=0.12.0
 
 # Web framework
 streamlit>=1.28.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
 
 # Financial data sources
 yfinance>=0.2.0

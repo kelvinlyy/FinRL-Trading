@@ -411,6 +411,21 @@ def run_backtest(config_path: str, start_date: str, end_date: str,
             data_dir or str(config.paths.data_root), weights_dir
         )
 
+        # 7. Enhanced visualization
+        try:
+            from src.strategies.adaptive_rotation.visualizer import generate_enhanced_chart
+            enhanced_chart_file = weights_dir / f"enhanced_backtest_{start_date}_to_{end_date}.png"
+            generate_enhanced_chart(
+                weights_csv=str(weights_detail_file),
+                audit_dir=str(audit_dir),
+                data_dir=data_dir or str(config.paths.data_root),
+                output_path=str(enhanced_chart_file),
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except Exception as e:
+            print(f"\nWarning: Enhanced chart generation failed: {e}")
+
     return results
 
 

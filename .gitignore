@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -132,6 +132,8 @@ dmypy.json
 /data/*
 src/strategies/output/
 logs/
+frontend/.next/
+frontend/node_modules/
 *.db
 *.sqlite
 !/data/finrl_trading.7z
