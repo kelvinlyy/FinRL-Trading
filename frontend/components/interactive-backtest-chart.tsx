@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import type { EquityPoint, VisualizationData } from "@/lib/types";
+import type { DrawdownPoint, EquityPoint, VisualizationData } from "@/lib/types";
 
 type Props = {
   data: VisualizationData;
@@ -101,6 +101,20 @@ function seriesValue(point: EquityPoint, key: SeriesKey): number | null {
   return v === undefined || v === null ? null : v;
 }
 
+/** Same formula as backend when API omits or short-changes drawdown vs equity. */
+function drawdownFromEquity(equity: EquityPoint[]): DrawdownPoint[] {
+  let peak = -Infinity;
+  return equity.map((p) => {
+    const v = p.strategy;
+    if (!Number.isFinite(v)) {
+      return { date: p.date, value: 0 };
+    }
+    peak = Math.max(peak, v);
+    const val = peak > 0 ? (v - peak) / peak : 0;
+    return { date: p.date, value: val };
+  });
+}
+
 export function InteractiveBacktestChart({ data }: Props) {
   const initialCapital = data.initial_capital ?? 1000;
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -109,6 +123,18 @@ export function InteractiveBacktestChart({ data }: Props) {
     SPY: true,
     QQQ: true,
   });
+
+  const drawdownSeries = useMemo((): DrawdownPoint[] => {
+    const eq = data.equity;
+    if (!eq.length) return [];
+    const aligned =
+      data.drawdown.length === eq.length &&
+      data.drawdown.every((d, i) => d.date === eq[i]?.date);
+    if (aligned) {
+      return data.drawdown;
+    }
+    return drawdownFromEquity(eq);
+  }, [data.equity, data.drawdown]);
 
   const geometry = useMemo(() => {
     if (!data.equity.length) {
@@ -132,16 +158,13 @@ export function InteractiveBacktestChart({ data }: Props) {
       point.strategy,
       point.SPY ?? point.strategy,
       point.QQQ ?? point.strategy,
-    ]);
-    const yMin = Math.min(...yValues) * 0.96;
-    const yMax = Math.max(...yValues) * 1.04;
+    ]).filter((v) => Number.isFinite(v));
+    const yMin = yValues.length ? Math.min(...yValues) * 0.96 : 0;
+    const yMax = yValues.length ? Math.max(...yValues) * 1.04 : 1;
     const y = makeScaler(yMin, yMax, equityHeight - margin.bottom, margin.top);
-    const ddY = makeScaler(
-      Math.min(...data.drawdown.map((point) => point.value)) * 1.05,
-      0,
-      drawdownHeight - margin.bottom,
-      margin.top,
-    );
+    const ddVals = drawdownSeries.map((p) => p.value).filter((v) => Number.isFinite(v));
+    const ddMin = ddVals.length ? Math.min(...ddVals) : 0;
+    const ddY = makeScaler(ddMin * 1.05, 0, drawdownHeight - margin.bottom, margin.top);
     const yTicks = equityTickValues(yMin, yMax);
     const equityPlotWidth = width - margin.right - margin.left;
     const groupPlotWidth = width - margin.right - GROUP_LABEL_GUTTER;
@@ -161,7 +184,7 @@ export function InteractiveBacktestChart({ data }: Props) {
       groupX,
       empty: false as const,
     };
-  }, [data]);
+  }, [data, drawdownSeries]);
 
   const firstPoint = data.equity[0];
   const hovered = hoverIndex !== null && hoverIndex >= 0 ? data.equity[hoverIndex] : null;
@@ -312,7 +335,7 @@ export function InteractiveBacktestChart({ data }: Props) {
                     <tspan x={margin.left - 10} dy="0">
                       {tick.toFixed(2)}×
                     </tspan>
-                    <tspan x={margin.left - 10} dy="11" className="fill-silver/85">
+                    <tspan x={margin.left - 10} dy="11" fill="#a8a8b8">
                       {formatUsdAxis(tick * initialCapital)}
                     </tspan>
                   </text>
@@ -391,13 +414,17 @@ export function InteractiveBacktestChart({ data }: Props) {
           </g>
 
           <g transform={`translate(0 ${equityHeight})`}>
-            <path
-              d={`${pathFor(data.drawdown.map((p) => ({ date: p.date, value: p.value })), geometry.x, geometry.ddY)} L ${geometry.x(toDateValue(data.drawdown[data.drawdown.length - 1].date))} ${geometry.ddY(0)} L ${geometry.x(toDateValue(data.drawdown[0].date))} ${geometry.ddY(0)} Z`}
-              fill="rgba(239, 68, 68, 0.22)"
-              stroke="#ef7777"
-              strokeWidth="1"
-            />
-            <line x1={margin.left} x2={width - margin.right} y1={geometry.ddY(0)} y2={geometry.ddY(0)} stroke="#70707d" opacity="0.4" />
+            {drawdownSeries.length > 0 ? (
+              <>
+                <path
+                  d={`${pathFor(drawdownSeries.map((p) => ({ date: p.date, value: p.value })), geometry.x, geometry.ddY)} L ${geometry.x(toDateValue(drawdownSeries[drawdownSeries.length - 1].date))} ${geometry.ddY(0)} L ${geometry.x(toDateValue(drawdownSeries[0].date))} ${geometry.ddY(0)} Z`}
+                  fill="rgba(239, 68, 68, 0.22)"
+                  stroke="#ef7777"
+                  strokeWidth="1"
+                />
+                <line x1={margin.left} x2={width - margin.right} y1={geometry.ddY(0)} y2={geometry.ddY(0)} stroke="#70707d" opacity="0.4" />
+              </>
+            ) : null}
             <text x="12" y="24" className="fill-silver text-[12px]">
               Drawdown
             </text>
