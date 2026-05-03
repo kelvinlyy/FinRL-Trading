@@ -1,7 +1,7 @@
-import { getRun, getRuns } from "@/lib/api";
+import { getRun, getRuns, getVisualization } from "@/lib/api";
 import { ResultsSummary } from "@/components/results-summary";
 import { SiteHeader } from "@/components/site-header";
-import Image from "next/image";
+import { InteractiveBacktestChart } from "@/components/interactive-backtest-chart";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -20,6 +20,7 @@ export default async function ResultsPage({
   const params = await searchParams;
   const selectedId = params?.run ?? runs[0]?.id;
   const selectedRun = selectedId ? await getRun(selectedId) : undefined;
+  const visualization = selectedId ? await getVisualization(selectedId) : undefined;
 
   return (
     <main>
@@ -43,7 +44,7 @@ export default async function ResultsPage({
             href={absoluteUrl(selectedRun?.chart_url)}
             className="w-fit rounded-[32px] bg-mercury-blue px-6 py-4 text-body-sm font-[480] text-pure-white"
           >
-            Open chart
+            Download PNG
           </a>
         </div>
       </section>
@@ -74,16 +75,13 @@ export default async function ResultsPage({
       {selectedRun ? (
         <>
           <ResultsSummary run={selectedRun} />
-          <section className="panel overflow-hidden rounded-md p-4">
-            <Image
-              src={absoluteUrl(selectedRun.chart_url)}
-              alt={`Enhanced backtest chart for ${selectedRun.label}`}
-              width={1600}
-              height={2200}
-              unoptimized
-              className="w-full rounded-sm"
-            />
-          </section>
+          {visualization ? (
+            <InteractiveBacktestChart data={visualization} />
+          ) : (
+            <section className="panel rounded-md p-8 text-silver">
+              Visualization data is not available for this run.
+            </section>
+          )}
         </>
       ) : (
         <section className="border border-lead/50 bg-midnight-slate p-10">

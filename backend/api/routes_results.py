@@ -7,6 +7,7 @@ from backend.services.results import (
     read_summary,
     read_trade_log,
     read_weights,
+    visualization_data,
     run_metadata,
 )
 
@@ -48,6 +49,14 @@ def result_weights(run_id: str):
     if run is None:
         raise HTTPException(status_code=404, detail="Result not found")
     return {"rows": read_weights(run)}
+
+
+@router.get("/{run_id}/visualization")
+def result_visualization(run_id: str):
+    run = get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return visualization_data(run)
 
 
 @router.get("/{run_id}/chart")
