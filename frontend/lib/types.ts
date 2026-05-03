@@ -57,6 +57,8 @@ export type RegimeBand = {
 
 export type VisualizationData = {
   run: BacktestRun;
+  /** Starting portfolio notional for scaling hover values (default 1000). */
+  initial_capital?: number;
   equity: EquityPoint[];
   drawdown: DrawdownPoint[];
   regimes: RegimeBand[];

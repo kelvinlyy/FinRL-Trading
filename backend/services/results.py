@@ -216,6 +216,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
     if not run.weights_path.exists():
         return {
             "run": run_metadata(run),
+            "initial_capital": 1000.0,
             "equity": [],
             "drawdown": [],
             "group_timeline": [],
@@ -247,6 +248,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
 
     return {
         "run": run_metadata(run),
+        "initial_capital": 1000.0,
         "equity": equity_rows,
         "drawdown": drawdown_rows,
         "regimes": _regime_spans(equity_rows),
