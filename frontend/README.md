@@ -1,34 +1,115 @@
-# FinRL Trading Frontend
+# FinRL Trading Console (Frontend)
 
-Static Next.js + Tailwind interface inspired by the Mercury Refero style:
-dark command-center surfaces, spacious layout, restrained typography, and a
-single Mercury Blue CTA accent.
+**Next.js 15** (App Router) + **Tailwind CSS 3** single-page experience for FinRL-X Adaptive Rotation results. UI language follows the **Mercury – Mountain Top Command Center** direction (Refero): dark surfaces, restrained typography, Mercury Blue accents, “command” layout.
 
-## Scope
+The app is **static-first**: pages are mostly server components that fetch the FastAPI backend at request time for `/results`. No mock trading UI; TBD areas from the legacy Streamlit app are omitted.
 
-This frontend intentionally includes only real/static content:
+---
 
-- Command dashboard
-- Saved Adaptive Rotation results
-- Strategy anatomy / methodology
+## Design system
 
-It does **not** include the former Streamlit app's TBD sections such as live
-trading controls, settings persistence, generic demo backtests, or mock
-portfolio analytics.
+| Token / pattern | Role |
+|-----------------|------|
+| **Colors** | `mercury-blue` (#5266eb) primary actions; `deep-space` / `midnight-slate` backgrounds; `starlight` / `silver` text; `lead` borders (see `tailwind.config.ts`). |
+| **Typography** | Inter / Manrope stack; scale from `caption` through `display` for hierarchy. |
+| **Surfaces** | `.panel` — bordered, blurred panels on a radial + linear gradient body (`app/globals.css`). |
+| **Shape** | Pill CTAs (`rounded-[32px]`), generous spacing, max content width `1200px`. |
+| **Charts** | SVG-based interactive report (`components/interactive-backtest-chart.tsx`): strategy / SPY / QQQ colors aligned with legend; regime shading; group activation lanes. |
 
-## Run
+Reference mood: [Mercury style – Refero](https://styles.refero.design/) (dark operational dashboard, not a marketing landing page).
+
+---
+
+## Architecture
+
+```
+frontend/
+├── app/                      # Next.js App Router
+│   ├── layout.tsx            # Root layout, fonts, globals
+│   ├── page.tsx              # Command / home
+│   ├── results/page.tsx      # Saved runs + interactive chart
+│   └── strategy/page.tsx     # Adaptive Rotation methodology (static)
+├── components/               # UI building blocks + chart
+├── lib/
+│   ├── api.ts                # fetch() helpers → FastAPI
+│   └── types.ts              # TypeScript models aligned with backend JSON
+├── app/globals.css           # Base styles + panel utilities
+├── tailwind.config.ts        # Mercury tokens
+└── package.json
+```
+
+**Data flow**
+
+1. Server components call `getRuns()`, `getRun()`, `getVisualization()` in `lib/api.ts`.
+2. `NEXT_PUBLIC_API_BASE_URL` (default `http://127.0.0.1:8000`) must point at the FastAPI instance.
+3. `InteractiveBacktestChart` is a client component; it receives **visualization** JSON and renders SVG (equity, drawdown, regimes, group timeline, hover snapshot).
+
+**Build output:** `next build` produces a production bundle; `next start` serves it. Development uses `next dev`.
+
+---
+
+## Functionality
+
+| Route / area | What it does |
+|--------------|----------------|
+| **`/`** | Command dashboard: overview copy and navigation to Results / Strategy. |
+| **`/results`** | Lists discovered runs (from API); run selector; summary cards; **interactive** equity / regime / drawdown / group-timeline chart; link to download PNG. |
+| **`/strategy`** | Static explanation of Adaptive Rotation (methodology), no live execution. |
+
+**Not included:** live trading, settings persistence, generic demo backtests, Streamlit-era TBD sections.
+
+---
+
+## How to start
+
+### Prerequisites
+
+- **Node.js 18+** (Next 15.x compatible with the version pinned in `package.json`).
+- Backend running (see `../backend/README.md`) if you want real runs and charts; otherwise the API client may fall back to empty or minimal data depending on `lib/api.ts` behavior.
+
+### Install
 
 ```bash
+cd frontend
 npm install
+```
+
+### Development
+
+```bash
 npm run dev
 ```
 
-Set `NEXT_PUBLIC_API_BASE_URL` if the backend is not running on
-`http://localhost:8000`.
+Opens **http://localhost:3000** (see `package.json` — dev server binds `0.0.0.0:3000`).
 
-## Build
+Point the browser at the API:
+
+```bash
+# Same shell as npm run dev, or use .env.local:
+echo 'NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000' > .env.local
+```
+
+Adjust host/port if Uvicorn listens elsewhere.
+
+### Production build
 
 ```bash
 npm run build
+npm run start
 ```
 
+### Lint
+
+```bash
+npm run lint
+```
+
+---
+
+## Troubleshooting
+
+| Issue | Hint |
+|-------|------|
+| Empty results list | Run Adaptive Rotation backtest so artifacts exist under `src/strategies/output/weights/adaptive_rotation/`, or check backend logs. |
+| Chart missing / failed fetch | Confirm `GET /api/results/{id}/visualization` returns 200; CORS and `NEXT_PUBLIC_API_BASE_URL` must match how you open the site (`localhost` vs `127.0.0.1`). |
+| Type errors after pulling | Run `npm install` and `npm run build`. |
