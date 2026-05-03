@@ -132,8 +132,6 @@ dmypy.json
 /data/*
 src/strategies/output/
 logs/
-frontend/.next/
-frontend/node_modules/
 .web_backtest_jobs/
 apps/frontend/.next/
 apps/frontend/node_modules/
