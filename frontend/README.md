@@ -116,7 +116,7 @@ npm run lint
 | Issue                                     | Hint                                                                                                                                                          |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **500** / `Cannot find module './NNN.js'` | Stale `.next` build output. Run **`npm run clean`**, then **`npm run build`**, and restart the dev or production server. Or delete `frontend/.next` manually. |
-| Group timeline: **three lanes** filled to the end | Fixed in recent builds (bars no longer stretch every past group to `chartEnd`). Run **`npm run clean`** and **`npm run build`**, restart Next.js, hard-refresh the browser. |
+| Group timeline: **three lanes** at **start** or **end** | Avoid stretching segment dates to the chart edges (fixed in `interactive-backtest-chart.tsx`). Bars begin where each group first has holdings after the max-2 cap. Restart after pull; hard-refresh. |
 | Empty results list                        | Run Adaptive Rotation backtest so artifacts exist under `src/strategies/output/weights/adaptive_rotation/`, or check backend logs.                            |
 | Chart missing / failed fetch              | Confirm `GET /api/results/{id}/visualization` returns 200; CORS and `NEXT_PUBLIC_API_BASE_URL` must match how you open the site (`localhost` vs `127.0.0.1`). |
 | Type errors after pulling                 | Run `npm install` and `npm run build`.                                                                                                                        |
