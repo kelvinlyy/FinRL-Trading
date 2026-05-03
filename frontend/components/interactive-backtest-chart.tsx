@@ -374,32 +374,61 @@ export function InteractiveBacktestChart({ data }: Props) {
     return best;
   }, [groupTimeline]);
 
-  /** Grey band: period with no group-lane data (equity may still be shown). */
-  const inactiveGroupLaneShade = useMemo(() => {
+  /**
+   * Period before the first weights row where any group shows holdings.
+   * Uses run.start when present so the band can appear when the backtest window starts before
+   * the first rebalance that produced group allocations (common when equity starts at run start).
+   */
+  const preActivationBand = useMemo(() => {
     if (geometry.empty || !data.equity.length) return null;
-    const chartStart = data.equity[0].date;
-    const xRight = width - margin.right;
-    const x0 = GROUP_LABEL_GUTTER;
+
+    const eq0 = data.equity[0].date;
+    const runStart = data.run?.start;
+    const bandStartDate =
+      runStart && toDateValue(runStart) < toDateValue(eq0) ? runStart : eq0;
+
+    const xRightEq = width - margin.right;
+    const xRightGrp = width - margin.right;
 
     if (!firstGroupActivationDate) {
-      const w = xRight - x0;
-      if (w < 3) return null;
+      const wEq = xRightEq - margin.left;
+      const wGrp = xRightGrp - GROUP_LABEL_GUTTER;
+      if (wEq < 2 && wGrp < 2) return null;
       return {
-        x: x0,
-        width: w,
-        title: "No group activation rows in this run’s weights export.",
+        equity: { x: margin.left, width: Math.max(0, wEq) },
+        drawdown: { x: margin.left, width: Math.max(0, wEq) },
+        groups: { x: GROUP_LABEL_GUTTER, width: Math.max(0, wGrp) },
+        caption: "No group activation in weights export for this run.",
+        title:
+          "Grey: no group lane data in portfolio weights CSV. Equity/drawdown may still use this date range.",
       };
     }
-    if (toDateValue(firstGroupActivationDate) <= toDateValue(chartStart)) return null;
-    const xEnd = geometry.groupX(firstGroupActivationDate);
-    const w = xEnd - x0;
-    if (w < 3) return null;
+
+    const tAct = toDateValue(firstGroupActivationDate);
+    const tStart = toDateValue(bandStartDate);
+    if (tAct <= tStart) return null;
+
+    const xEndEq = geometry.x(tAct);
+    const xEndGrp = geometry.groupX(firstGroupActivationDate);
+
+    const x0EqRaw = geometry.x(toDateValue(bandStartDate));
+    const x0GrpRaw = geometry.groupX(bandStartDate);
+    const x0Eq = Math.max(margin.left, x0EqRaw);
+    const x0Grp = Math.max(GROUP_LABEL_GUTTER, x0GrpRaw);
+
+    const wEq = Math.max(0, xEndEq - x0Eq);
+    const wGrp = Math.max(0, xEndGrp - x0Grp);
+    if (wEq < 2 && wGrp < 2) return null;
+
+    const runLabel = runStart ? formatDate(runStart) : "—";
     return {
-      x: x0,
-      width: w,
-      title: `No activated-group weights in artifacts before ${formatDate(firstGroupActivationDate)} (equity from ${formatDate(chartStart)}).`,
+      equity: { x: x0Eq, width: wEq },
+      drawdown: { x: x0Eq, width: wEq },
+      groups: { x: x0Grp, width: wGrp },
+      caption: `Shaded: before first group activation (${formatDate(firstGroupActivationDate)}). Run window starts ${runLabel}.`,
+      title: `No activated-group weights in artifact rows before ${formatDate(firstGroupActivationDate)}. Equity curve may still start at ${formatDate(eq0)}.`,
     };
-  }, [geometry, data.equity, firstGroupActivationDate]);
+  }, [geometry, data.equity, data.run?.start, firstGroupActivationDate]);
 
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];
@@ -441,6 +470,12 @@ export function InteractiveBacktestChart({ data }: Props) {
             <p className="mt-2 text-body-sm text-silver">
               Portfolio scaled from {formatUsd(initialCapital)} initial funding (growth curve matches backtest normalization).
             </p>
+            {preActivationBand ? (
+              <p className="mt-3 max-w-3xl text-body-sm text-silver/90" title={preActivationBand.title}>
+                <span className="mr-2 inline-block h-3 w-3 rounded-sm align-middle bg-[rgba(90,92,110,0.55)] ring-1 ring-lead/40" aria-hidden />
+                {preActivationBand.caption}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -491,6 +526,19 @@ export function InteractiveBacktestChart({ data }: Props) {
                 />
               );
             })}
+            {preActivationBand && preActivationBand.equity.width >= 2 ? (
+              <rect
+                x={preActivationBand.equity.x}
+                y={margin.top}
+                width={preActivationBand.equity.width}
+                height={equityHeight - margin.top - margin.bottom}
+                fill="rgba(65, 67, 88, 0.42)"
+                stroke="rgba(140, 140, 155, 0.35)"
+                strokeWidth={1}
+              >
+                <title>{preActivationBand.title}</title>
+              </rect>
+            ) : null}
 
             {/* Y-axis value labels (multiplier + dollar notionals) */}
             {!geometry.empty &&
@@ -592,6 +640,19 @@ export function InteractiveBacktestChart({ data }: Props) {
           </g>
 
           <g transform={`translate(0 ${equityHeight})`}>
+            {preActivationBand && preActivationBand.drawdown.width >= 2 ? (
+              <rect
+                x={preActivationBand.drawdown.x}
+                y={margin.top}
+                width={preActivationBand.drawdown.width}
+                height={drawdownHeight - margin.top - margin.bottom}
+                fill="rgba(65, 67, 88, 0.42)"
+                stroke="rgba(140, 140, 155, 0.35)"
+                strokeWidth={1}
+              >
+                <title>{preActivationBand.title}</title>
+              </rect>
+            ) : null}
             {drawdownSeries.length > 0 ? (
               <>
                 <path
@@ -609,26 +670,26 @@ export function InteractiveBacktestChart({ data }: Props) {
           </g>
 
           <g transform={`translate(0 ${equityHeight + drawdownHeight})`}>
-            {inactiveGroupLaneShade ? (
+            {preActivationBand && preActivationBand.groups.width >= 2 ? (
               <g>
                 <rect
-                  x={inactiveGroupLaneShade.x}
+                  x={preActivationBand.groups.x}
                   y={10}
-                  width={inactiveGroupLaneShade.width}
+                  width={preActivationBand.groups.width}
                   height={groupsHeight - 28}
-                  fill="rgba(112, 112, 125, 0.22)"
-                  stroke="rgba(112, 112, 125, 0.35)"
+                  fill="rgba(65, 67, 88, 0.42)"
+                  stroke="rgba(140, 140, 155, 0.35)"
                   strokeWidth={1}
                 >
-                  <title>{inactiveGroupLaneShade.title}</title>
+                  <title>{preActivationBand.title}</title>
                 </rect>
                 <text
-                  x={inactiveGroupLaneShade.x + 8}
+                  x={preActivationBand.groups.x + 8}
                   y={26}
-                  className="fill-silver text-[10px]"
-                  opacity={0.85}
+                  className="fill-starlight text-[11px] font-[480]"
+                  opacity={0.95}
                 >
-                  No group lane data yet
+                  Before first group activation
                 </text>
               </g>
             ) : null}

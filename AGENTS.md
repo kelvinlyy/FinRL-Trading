@@ -16,6 +16,18 @@ Whenever you **edit** `backend/`, `frontend/`, `scripts/restart-dev-stack.sh`, o
 
 Skipping this step is not acceptable; the user should not have to ask for a restart separately.
 
+### Mandatory: verify before responding (quality gate)
+
+Before telling the user that backend or frontend work is **done**, run checks so unrelated areas are less likely to break:
+
+| Change touched | Run before responding |
+|----------------|----------------------|
+| **`frontend/`** | `./scripts/verify-frontend.sh` (runs **`npm run clean`** then **`npm run build`** to avoid stale `.next` flakes). |
+| **`backend/`** | `python3 -m py_compile` on edited `.py` files, or `pytest` / smoke **`curl http://127.0.0.1:8000/docs`** after **`restart-dev-stack.sh`**. |
+| **Both** | Both rows above. |
+
+Do **not** claim the UI “should work” without at least **frontend build success** when TS/React changed. Fix failures before ending the turn.
+
 ### Environment
 
 - **Python 3.11+** is required (`python_requires=">=3.11"` in `setup.py`).
@@ -49,6 +61,7 @@ Agents cannot click “refresh” in the user’s browser; after restart, **tell
 | Task                | Command                                                                                        |
 | ------------------- | ---------------------------------------------------------------------------------------------- |
 | **Restart API + Next** | `./scripts/restart-dev-stack.sh` (after backend/frontend changes; `--clean-next` if Next is broken) |
+| **Verify frontend** | `./scripts/verify-frontend.sh` (required before saying frontend work is complete) |
 | Install deps        | `pip install -r requirements.txt` (skip finnhub line) then `pip install finnhub-python pyyaml` |
 | Backtest            | `./deploy.sh --strategy adaptive_rotation --mode backtest --start 2024-01-01 --end 2024-12-31` |
 | Single signal       | `./deploy.sh --strategy adaptive_rotation --mode single --date 2024-12-31`                     |
