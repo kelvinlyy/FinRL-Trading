@@ -44,7 +44,7 @@ backend/
 | **Trade log** | Rows from `trade_log_*.csv`. |
 | **Weights** | Raw portfolio weights CSV for inspection. |
 | **Chart PNG** | Serves the matplotlib-generated `enhanced_backtest_*.png`. |
-| **Visualization JSON** | Structured series for the SPA: equity (strategy + SPY/QQQ), drawdown, regime bands, group activation timeline, trades; includes `initial_capital` (default notionals scale). |
+| **Visualization JSON** | Structured series for the SPA: equity (strategy + SPY/QQQ), drawdown, regime bands, group activation timeline, trades; includes `initial_capital` (default notionals scale). Group lanes show at most **two** activated groups per date (top two by total group weight), matching `max_active_groups` in the Adaptive Rotation config. |
 
 **Out of scope (by design):** live trading, auth, persisting user settings, triggering backtests over HTTP, non–Adaptive-Rotation strategies.
 
