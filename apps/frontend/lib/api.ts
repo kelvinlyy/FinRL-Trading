@@ -5,7 +5,10 @@ import type {
   BacktestJobSummary,
   BacktestRun,
   DataCoverageDetail,
+  DataOverview,
+  DeployStrategyRow,
   ResultsIndex,
+  RuntimePublicConfig,
   StrategyGroup,
   Trade,
   VisualizationData,
@@ -226,8 +229,11 @@ function _formatFastApiDetail(detail: unknown): string {
 }
 
 export async function startBacktestRun(payload: {
-  start: string;
-  end: string;
+  start?: string;
+  end?: string;
+  date?: string;
+  strategy?: string;
+  mode?: "backtest" | "single";
 }): Promise<{ job_id: string; status: string }> {
   let response: Response;
   try {
@@ -268,6 +274,37 @@ export async function listBacktestJobs(): Promise<BacktestJobSummary[]> {
     if (!response.ok) return [];
     const payload = (await response.json()) as { jobs: BacktestJobSummary[] };
     return payload.jobs ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getDataOverview(): Promise<DataOverview | null> {
+  try {
+    const response = await fetch(`${API_BASE}/api/data/overview`, _apiFetchInit());
+    if (!response.ok) return null;
+    return (await response.json()) as DataOverview;
+  } catch {
+    return null;
+  }
+}
+
+export async function getRuntimePublicConfig(): Promise<RuntimePublicConfig | null> {
+  try {
+    const response = await fetch(`${API_BASE}/api/config/runtime`, _apiFetchInit());
+    if (!response.ok) return null;
+    return (await response.json()) as RuntimePublicConfig;
+  } catch {
+    return null;
+  }
+}
+
+export async function listDeployStrategies(): Promise<DeployStrategyRow[]> {
+  try {
+    const response = await fetch(`${API_BASE}/api/backtest/strategies`, _apiFetchInit());
+    if (!response.ok) return [];
+    const body = (await response.json()) as { strategies?: DeployStrategyRow[] };
+    return body.strategies ?? [];
   } catch {
     return [];
   }

@@ -19,7 +19,15 @@ export default async function HomePage() {
             Configure your backtest, then run it.
           </h1>
           <p className="text-subheading text-silver">
-            One place for Adaptive Rotation parameters and the browser job. After a run finishes, open{" "}
+            One place for Adaptive Rotation parameters and the browser job. Inspect local CSV / SQLite stats on{" "}
+            <Link href="/data" className="text-ghost-blue underline-offset-4 hover:underline">
+              Data
+            </Link>
+            , runtime flags on{" "}
+            <Link href="/settings" className="text-ghost-blue underline-offset-4 hover:underline">
+              Settings
+            </Link>
+            . After a range backtest finishes, open{" "}
             <Link href="/results" className="text-ghost-blue underline-offset-4 hover:underline">
               Results
             </Link>{" "}

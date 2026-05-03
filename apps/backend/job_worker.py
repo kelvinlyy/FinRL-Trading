@@ -14,6 +14,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
+AUDIT_DIR = PROJECT_ROOT / "src/strategies/output/audit/adaptive_rotation"
 DEPLOY_SCRIPT = PROJECT_ROOT / "deploy.sh"
 META_NAME = "meta.json"
 
@@ -61,6 +62,9 @@ def main() -> None:
     job_id = meta.get("job_id", job_dir.name)
     start = meta["start"]
     end = meta["end"]
+    strategy = meta.get("strategy", "adaptive_rotation")
+    mode = meta.get("mode", "backtest")
+    single_date = meta.get("single_date")
 
     if not DEPLOY_SCRIPT.is_file():
         meta["status"] = "failed"
@@ -77,19 +81,11 @@ def main() -> None:
     out_path = job_dir / "deploy.stdout.log"
     err_path = job_dir / "deploy.stderr.log"
 
-    cmd = [
-        "bash",
-        str(DEPLOY_SCRIPT),
-        "--strategy",
-        "adaptive_rotation",
-        "--mode",
-        "backtest",
-        "--start",
-        start,
-        "--end",
-        end,
-        "--skip-download",
-    ]
+    cmd = ["bash", str(DEPLOY_SCRIPT), "--strategy", strategy, "--mode", mode, "--skip-download"]
+    if mode == "backtest":
+        cmd += ["--start", start, "--end", end]
+    else:
+        cmd += ["--date", single_date or start]
 
     returncode: int | None = None
     try:
@@ -121,27 +117,45 @@ def main() -> None:
         _atomic_write_meta(job_dir, meta)
         sys.exit(1)
 
-    run_id = f"{start}_to_{end}"
-    # Weights + summary are written before the optional matplotlib enhanced PNG; the web UI
-    # charts from CSVs (visualization API), not the PNG.
-    weights_csv = RESULTS_DIR / f"ars_portfolio_weights_{start}_to_{end}.csv"
-
     meta["returncode"] = returncode
-    if returncode == 0 and weights_csv.is_file():
-        meta["status"] = "completed"
-        meta["result_run_id"] = run_id
-        meta["error"] = None
-    elif returncode == 0:
-        meta["status"] = "failed"
-        meta["result_run_id"] = None
-        meta["error"] = (
-            f"deploy.sh exited 0 but expected weights CSV was not found ({weights_csv.name}). "
-            "The strategy may have failed before saving outputs."
-        )
+    if mode == "backtest":
+        run_id = f"{start}_to_{end}"
+        weights_csv = RESULTS_DIR / f"ars_portfolio_weights_{start}_to_{end}.csv"
+        if returncode == 0 and weights_csv.is_file():
+            meta["status"] = "completed"
+            meta["result_run_id"] = run_id
+            meta["error"] = None
+        elif returncode == 0:
+            meta["status"] = "failed"
+            meta["result_run_id"] = None
+            meta["error"] = (
+                f"deploy.sh exited 0 but expected weights CSV was not found ({weights_csv.name}). "
+                "The strategy may have failed before saving outputs."
+            )
+        else:
+            meta["status"] = "failed"
+            meta["result_run_id"] = None
+            meta["error"] = "Backtest command failed (non-zero exit)"
     else:
-        meta["status"] = "failed"
-        meta["result_run_id"] = None
-        meta["error"] = "Backtest command failed (non-zero exit)"
+        d = single_date or start
+        run_id = f"single_{d}"
+        # ``run_adaptive_rotation_strategy.py --date`` writes ``audit_<date>.json`` (see run_single_date).
+        audit_json = AUDIT_DIR / f"audit_{d}.json"
+        if returncode == 0 and audit_json.is_file():
+            meta["status"] = "completed"
+            meta["result_run_id"] = run_id
+            meta["error"] = None
+        elif returncode == 0:
+            meta["status"] = "failed"
+            meta["result_run_id"] = None
+            meta["error"] = (
+                f"deploy.sh exited 0 but expected audit file was not found ({audit_json.name}). "
+                "Check deploy logs for strategy errors."
+            )
+        else:
+            meta["status"] = "failed"
+            meta["result_run_id"] = None
+            meta["error"] = "Single-date deploy command failed (non-zero exit)"
 
     _atomic_write_meta(job_dir, meta)
     sys.exit(0 if meta["status"] == "completed" else 1)

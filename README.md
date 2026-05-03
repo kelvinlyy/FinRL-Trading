@@ -60,8 +60,24 @@ where $\mathcal{S}$ denotes stock selection, $\mathcal{A}$ portfolio allocation,
 | **Backtest** | Offline evaluation | `bt`-powered engine with multi-benchmark comparison and transaction costs |
 | **Execution** | Live/paper trading | Alpaca multi-account integration with pre-trade risk checks |
 
+### Web console (Next.js + FastAPI)
+
+The **browser command center** lives under `apps/` and talks to the same repo data as `deploy.sh`:
+
+| App | Path | Default port | Role |
+|:----|:-----|:-------------|:-----|
+| **Frontend** | `apps/frontend` | **3000** | Next.js UI: universe editor, backtest jobs, results charts |
+| **Backend** | `apps/backend` | **8000** | FastAPI: `/api/results`, `/api/backtest`, `/api/config`, `/api/data` |
+
+From the repo root, `./scripts/restart-dev-stack.sh` starts both processes. Open `http://localhost:3000` (hard-refresh after restarts). API docs: `http://127.0.0.1:8000/docs`.
+
+The Streamlit dashboard (`streamlit run src/web/app.py`, default **8501**) remains available for the legacy layout; new console work targets `apps/frontend` + `apps/backend`.
+
 ```
 finrl-trading/
+├── apps/
+│   ├── backend/                    # FastAPI console API (PYTHONPATH includes apps/)
+│   └── frontend/                   # Next.js 15 app (npm install / npm run dev)
 ├── src/
 │   ├── config/                     # ⚙️  Centralized configuration management
 │   │   └── settings.py             #     Pydantic-based settings + environment variables

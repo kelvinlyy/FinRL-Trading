@@ -1,11 +1,71 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.services.adaptive_yaml import KNOWN_GROUP_IDS, load_adaptive_rotation_public, save_adaptive_rotation_public
 
 router = APIRouter(prefix="/api/config", tags=["config"])
+
+
+def _secret_configured(value: object) -> bool:
+    if value is None:
+        return False
+    getter = getattr(value, "get_secret_value", None)
+    if callable(getter):
+        try:
+            return bool(getter())
+        except Exception:
+            return False
+    s = str(value).strip()
+    return bool(s)
+
+
+@router.get("/runtime")
+def runtime_public_config():
+    """Non-secret runtime metadata (paths, booleans for optional credentials)."""
+    try:
+        from src.config.settings import get_config
+
+        cfg = get_config()
+        root = Path(__file__).resolve().parents[3]
+
+        def _abs(p: str | Path) -> str:
+            q = Path(p)
+            out = q if q.is_absolute() else (root / q)
+            try:
+                return str(out.resolve())
+            except OSError:
+                return str(out)
+
+        return {
+            "app_name": cfg.app_name,
+            "version": cfg.version,
+            "environment": cfg.environment,
+            "paths": {
+                "repo_root": str(root),
+                "data_base_dir": _abs(cfg.data.base_dir),
+                "data_cache_dir": _abs(cfg.data.cache_dir),
+                "data_processed_dir": _abs(cfg.data.processed_dir),
+                "database_path": _abs(cfg.get_database_path()),
+            },
+            "credentials_configured": {
+                "alpaca_api_key": bool(cfg.alpaca.api_key and str(cfg.alpaca.api_key).strip()),
+                "alpaca_api_secret": bool(cfg.alpaca.api_secret and str(cfg.alpaca.api_secret).strip()),
+                "fmp_api_key": _secret_configured(cfg.fmp.api_key),
+                "openai_api_key": _secret_configured(cfg.openai.api_key),
+                "wrds_username": bool(cfg.wrds.username and str(cfg.wrds.username).strip()),
+            },
+            "alpaca": {
+                "base_url": cfg.alpaca.base_url,
+                "use_paper_trading": cfg.alpaca.use_paper_trading,
+            },
+            "web_legacy_streamlit_port": cfg.web.port,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Could not load settings: {exc}") from exc
 
 
 class _GroupWrite(BaseModel):

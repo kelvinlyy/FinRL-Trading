@@ -196,3 +196,30 @@ def check_backtest_data_coverage(
         missing_files=missing,
         insufficient_range=bad_range,
     )
+
+
+def check_single_date_data_coverage(
+    decision_date: str,
+    *,
+    config_path: Path | None = None,
+    data_dir: Path | None = None,
+) -> DataCoverageReport:
+    """
+    Same CSV rules as a range backtest, using YAML ``minimum_history_weeks`` before ``decision_date``.
+
+    ``deploy.sh`` single mode still needs history through ``decision_date``; we validate
+    ``[decision_date - weeks, decision_date]`` with the same logic as ``check_backtest_data_coverage``.
+    """
+    from backend.services.backtest_jobs import _validate_iso_date
+
+    _validate_iso_date("date", decision_date)
+    cfg = config_path or DEFAULT_CONFIG
+    lookback_weeks = _config_history_weeks(cfg)
+    end_bt = pd.Timestamp(decision_date)
+    lookback_start = (end_bt - timedelta(weeks=lookback_weeks)).strftime("%Y-%m-%d")
+    return check_backtest_data_coverage(
+        lookback_start,
+        decision_date,
+        config_path=cfg,
+        data_dir=data_dir,
+    )

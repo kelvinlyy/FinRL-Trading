@@ -133,6 +133,9 @@ class BacktestJob:
     job_id: str
     start: str
     end: str
+    strategy: str = "adaptive_rotation"
+    mode: str = "backtest"
+    single_date: str | None = None
     status: str = "queued"
     created_at: str = field(default_factory=_utc_now)
     updated_at: str = field(default_factory=_utc_now)
@@ -148,6 +151,9 @@ class BacktestJob:
             "status": self.status,
             "start": self.start,
             "end": self.end,
+            "strategy": self.strategy,
+            "mode": self.mode,
+            "single_date": self.single_date,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "returncode": self.returncode,
@@ -190,6 +196,9 @@ def _hydrate_from_disk(job_dir: Path) -> BacktestJob | None:
         job_id=meta["job_id"],
         start=meta["start"],
         end=meta["end"],
+        strategy=meta.get("strategy", "adaptive_rotation"),
+        mode=meta.get("mode", "backtest"),
+        single_date=meta.get("single_date"),
         status=meta.get("status", "unknown"),
         created_at=meta.get("created_at", _utc_now()),
         updated_at=meta.get("updated_at", _utc_now()),
@@ -230,6 +239,9 @@ def list_recent_jobs(limit: int = 25) -> list[dict[str, Any]]:
                 "status": meta.get("status"),
                 "start": meta["start"],
                 "end": meta["end"],
+                "strategy": meta.get("strategy", "adaptive_rotation"),
+                "mode": meta.get("mode", "backtest"),
+                "single_date": meta.get("single_date"),
                 "updated_at": meta.get("updated_at"),
                 "result_run_id": meta.get("result_run_id"),
             }
@@ -275,19 +287,49 @@ def spawn_job_worker(job_id: str) -> None:
     )
 
 
-def create_job(start: str, end: str) -> BacktestJob:
-    _validate_iso_date("start", start)
-    _validate_iso_date("end", end)
-    if start >= end:
-        raise ValueError("start must be before end")
+def create_job(
+    start: str,
+    end: str,
+    *,
+    strategy: str = "adaptive_rotation",
+    mode: str = "backtest",
+    single_date: str | None = None,
+) -> BacktestJob:
+    from backend.services.strategy_registry import is_known_strategy
+
+    mode_norm = (mode or "backtest").strip().lower()
+    if mode_norm not in ("backtest", "single"):
+        raise ValueError("mode must be 'backtest' or 'single'")
+
+    strat = (strategy or "adaptive_rotation").strip()
+    if not is_known_strategy(strat):
+        raise ValueError(f"Unknown strategy '{strat}' (not listed in deploy.sh STRATEGIES)")
+
+    if mode_norm == "backtest":
+        _validate_iso_date("start", start)
+        _validate_iso_date("end", end)
+        if start >= end:
+            raise ValueError("start must be before end")
+        sd: str | None = None
+        meta_start, meta_end = start, end
+    else:
+        d = (single_date or "").strip()
+        if not d:
+            raise ValueError("single mode requires 'date' (YYYY-MM-DD)")
+        _validate_iso_date("date", d)
+        meta_start, meta_end = d, d
+        sd = d
 
     job_id = str(uuid.uuid4())
     job_dir = _job_dir(job_id)
     meta: dict[str, Any] = {
-        "version": 1,
+        "version": 2,
         "job_id": job_id,
-        "start": start,
-        "end": end,
+        "start": meta_start,
+        "end": meta_end,
+        "strategy": strat,
+        "mode": mode_norm,
+        "single_date": sd,
         "status": "queued",
         "created_at": _utc_now(),
         "updated_at": _utc_now(),
@@ -303,3 +345,7 @@ def create_job(start: str, end: str) -> BacktestJob:
     if hydrated is None:
         raise RuntimeError("Failed to persist backtest job")
     return hydrated
+
+
+def allowed_modes_public() -> list[str]:
+    return ["backtest", "single"]
