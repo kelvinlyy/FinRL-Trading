@@ -137,12 +137,12 @@ def main() -> None:
 
     meta["returncode"] = returncode
     if mode == "backtest":
-        run_id = f"{start}_to_{end}"
+        legacy_run_id = f"{start}_to_{end}"
         # All registered runners write this summary file (adaptive, RSI, …).
         summary_csv = weights_dir / f"backtest_{start}_to_{end}.csv"
         if returncode == 0 and summary_csv.is_file():
             meta["status"] = "completed"
-            meta["result_run_id"] = run_id
+            meta["result_run_id"] = f"{strategy}__{legacy_run_id}"
             meta["error"] = None
         elif returncode == 0:
             meta["status"] = "failed"

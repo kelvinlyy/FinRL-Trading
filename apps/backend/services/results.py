@@ -8,14 +8,19 @@ from typing import Any
 
 import pandas as pd
 
-from backend.services.adaptive_yaml import load_adaptive_rotation_public
+from backend.services.strategy_registry import (
+    config_path_for_strategy,
+    list_deploy_strategies,
+    resolve_strategy_output_dirs,
+)
 
 # apps/backend/services/ -> repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-RESULTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
 DATA_DIR = PROJECT_ROOT / "data/fmp_daily"
-RESULT_RE = re.compile(r"enhanced_backtest_(?P<start>.+)_to_(?P<end>.+)\.png$")
-WEIGHTS_RE = re.compile(r"^ars_portfolio_weights_(?P<start>.+)_to_(?P<end>.+)\.csv$")
+# e.g. ars_portfolio_weights_2023-01-01_to_2024-12-31.csv, rsi_portfolio_weights_...
+WEIGHTS_FILE_RE = re.compile(
+    r"^(?P<prefix>[a-z0-9]+)_portfolio_weights_(?P<start>.+)_to_(?P<end>.+)\.csv$"
+)
 
 GROUP_MEMBERS = {
     "Growth Tech": ["AAPL", "MSFT", "NVDA", "META", "AMZN", "GOOGL", "TSLA"],
@@ -35,6 +40,8 @@ _MIN_MEANINGFUL_GROUP_INVESTED = 0.06
 @dataclass(frozen=True)
 class BacktestRun:
     id: str
+    strategy_slug: str
+    legacy_id: str
     start: str
     end: str
     chart_path: Path
@@ -44,44 +51,38 @@ class BacktestRun:
 
     @property
     def label(self) -> str:
-        return f"{self.start} to {self.end}"
+        return f"{self.strategy_slug}: {self.start} to {self.end}"
 
 
-def _run_from_chart(chart_path: Path) -> BacktestRun | None:
-    match = RESULT_RE.match(chart_path.name)
+def _pick_chart_png(weights_dir: Path, legacy_id: str) -> Path:
+    """Adaptive writes ``enhanced_backtest_*.png``; RSI/simple runners often write ``backtest_*.png``."""
+    for name in (f"enhanced_backtest_{legacy_id}.png", f"backtest_{legacy_id}.png"):
+        p = weights_dir / name
+        if p.exists():
+            return p
+    return weights_dir / f"enhanced_backtest_{legacy_id}.png"
+
+
+def _run_from_weights(weights_path: Path, strategy_slug: str) -> BacktestRun | None:
+    match = WEIGHTS_FILE_RE.match(weights_path.name)
     if not match:
         return None
 
     start = match.group("start")
     end = match.group("end")
-    run_id = f"{start}_to_{end}"
+    legacy_id = f"{start}_to_{end}"
+    weights_dir = weights_path.parent
+    chart_path = _pick_chart_png(weights_dir, legacy_id)
+    composite_id = f"{strategy_slug}__{legacy_id}"
     return BacktestRun(
-        id=run_id,
+        id=composite_id,
+        strategy_slug=strategy_slug,
+        legacy_id=legacy_id,
         start=start,
         end=end,
         chart_path=chart_path,
-        trade_log_path=chart_path.with_name(f"trade_log_{run_id}.csv"),
-        summary_path=chart_path.with_name(f"backtest_{run_id}.csv"),
-        weights_path=chart_path.with_name(f"ars_portfolio_weights_{run_id}.csv"),
-    )
-
-
-def _run_from_weights(weights_path: Path) -> BacktestRun | None:
-    match = WEIGHTS_RE.match(weights_path.name)
-    if not match:
-        return None
-
-    start = match.group("start")
-    end = match.group("end")
-    run_id = f"{start}_to_{end}"
-    chart_path = RESULTS_DIR / f"enhanced_backtest_{run_id}.png"
-    return BacktestRun(
-        id=run_id,
-        start=start,
-        end=end,
-        chart_path=chart_path,
-        trade_log_path=weights_path.with_name(f"trade_log_{run_id}.csv"),
-        summary_path=weights_path.with_name(f"backtest_{run_id}.csv"),
+        trade_log_path=weights_dir / f"trade_log_{legacy_id}.csv",
+        summary_path=weights_dir / f"backtest_{legacy_id}.csv",
         weights_path=weights_path,
     )
 
@@ -93,28 +94,34 @@ def _run_mtime(run: BacktestRun) -> float:
 
 
 def list_runs() -> list[BacktestRun]:
-    if not RESULTS_DIR.exists():
-        return []
-
     by_id: dict[str, BacktestRun] = {}
-    for weights_path in RESULTS_DIR.glob("ars_portfolio_weights_*_to_*.csv"):
-        run = _run_from_weights(weights_path)
-        if run:
-            by_id[run.id] = run
-    for chart_path in RESULTS_DIR.glob("enhanced_backtest_*_to_*.png"):
-        run = _run_from_chart(chart_path)
-        if run and run.id not in by_id:
-            by_id[run.id] = run
+    for row in list_deploy_strategies():
+        slug = row["name"]
+        weights_dir, _ = resolve_strategy_output_dirs(slug)
+        if not weights_dir.is_dir():
+            continue
+        for weights_path in weights_dir.glob("*_portfolio_weights_*_to_*.csv"):
+            run = _run_from_weights(weights_path, slug)
+            if run:
+                by_id[run.id] = run
 
     runs = list(by_id.values())
     return sorted(runs, key=_run_mtime, reverse=True)
 
 
 def get_run(run_id: str) -> BacktestRun | None:
-    for run in list_runs():
+    runs = list_runs()
+    for run in runs:
         if run.id == run_id:
             return run
-    return None
+    legacy_matches = [r for r in runs if r.legacy_id == run_id]
+    if not legacy_matches:
+        return None
+    for slug in ("adaptive_rotation",):
+        for run in legacy_matches:
+            if run.strategy_slug == slug:
+                return run
+    return legacy_matches[0]
 
 
 def latest_run() -> BacktestRun | None:
@@ -150,18 +157,39 @@ def _optional_float(value: Any) -> float | None:
         return None
 
 
-def _resolved_benchmark_symbols() -> tuple[list[str], str]:
-    """Symbols and label from live Adaptive Rotation YAML (matches strategy excess benchmark group)."""
-    try:
-        cfg = load_adaptive_rotation_public()
-    except (OSError, FileNotFoundError, ValueError):
-        return (["QQQ"], "QQQ")
-    syms = cfg.get("excess_return_benchmark_symbols") or []
-    if not syms:
-        one = (cfg.get("excess_return_benchmark") or "QQQ").strip()
-        syms = [one] if one else ["QQQ"]
-    label = str(cfg.get("benchmark_excess_label") or (" + ".join(syms) if len(syms) > 1 else syms[0]))
-    return (list(syms), label)
+def _strategy_yaml(strategy_slug: str) -> dict[str, Any]:
+    import yaml
+
+    path = config_path_for_strategy(strategy_slug)
+    with path.open(encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
+
+
+def _strategy_display_name(strategy_slug: str) -> str:
+    raw = _strategy_yaml(strategy_slug)
+    meta = raw.get("strategy") or {}
+    name = str(meta.get("name") or strategy_slug).strip() or strategy_slug
+    ver = meta.get("version")
+    if ver:
+        return f"{name} ({ver})"
+    return name
+
+
+def _resolved_benchmark_symbols_for_strategy(strategy_slug: str) -> tuple[list[str], str]:
+    """Benchmark composite symbols + label from **that** strategy's YAML (not always Adaptive Rotation)."""
+    raw = _strategy_yaml(strategy_slug)
+    bench = raw.get("benchmark") or {}
+    extra = bench.get("excess_return_benchmark_symbols")
+    if isinstance(extra, list) and extra:
+        syms = [str(s).strip() for s in extra if str(s).strip()]
+        if syms:
+            label = bench.get("benchmark_excess_label") or (" + ".join(syms) if len(syms) > 1 else syms[0])
+            return (syms, str(label))
+    one = bench.get("excess_return_benchmark")
+    if one is None or str(one).strip() == "":
+        one = "SPY"
+    one = str(one).strip()
+    return ([one], one)
 
 
 def _normalized_buyhold(
@@ -193,13 +221,13 @@ def _load_price_frame(symbols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(prices)
 
 
-def _compute_equity(weights_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+def _compute_equity(weights_df: pd.DataFrame, strategy_slug: str) -> tuple[pd.DataFrame, str]:
     weights_df = weights_df.copy()
     weights_df["date"] = pd.to_datetime(weights_df["date"])
 
     meta_cols = {"date", "cash", "regime"}
     asset_cols = [column for column in weights_df.columns if column not in meta_cols]
-    bench_syms, bench_label = _resolved_benchmark_symbols()
+    bench_syms, bench_label = _resolved_benchmark_symbols_for_strategy(strategy_slug)
     price_symbols = sorted(set(asset_cols) | set(bench_syms) | {"SPY", "QQQ"})
     price_df = _load_price_frame(price_symbols)
 
@@ -366,6 +394,8 @@ def run_metadata(run: BacktestRun) -> dict[str, Any]:
     chart_url = f"/api/results/{run.id}/chart" if run.chart_path.exists() else ""
     return {
         "id": run.id,
+        "strategy": run.strategy_slug,
+        "legacy_id": run.legacy_id,
         "label": run.label,
         "start": run.start,
         "end": run.end,
@@ -392,7 +422,8 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
         return {
             "run": run_metadata(run),
             "initial_capital": 1000.0,
-            "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
+            "max_timeline_active_groups": 0,
+            "show_group_timeline": run.strategy_slug == "adaptive_rotation",
             "weights_first_date": None,
             "first_meaningful_group_holdings_date": None,
             "equity": [],
@@ -403,7 +434,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
         }
 
     weights_df = _normalize_weights_frame(pd.read_csv(run.weights_path))
-    equity_df, bench_label = _compute_equity(weights_df)
+    equity_df, bench_label = _compute_equity(weights_df, run.strategy_slug)
     strategy = equity_df["strategy"]
     drawdown = (strategy - strategy.cummax()) / strategy.cummax()
 
@@ -422,8 +453,9 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
             er["QQQ"] = _optional_float(row.get("QQQ"))
         equity_rows.append(er)
 
+    strat_label = _strategy_display_name(run.strategy_slug)
     equity_series: list[dict[str, str]] = [
-        {"key": "strategy", "label": "Strategy", "color": "#5266eb"},
+        {"key": "strategy", "label": strat_label, "color": "#5266eb"},
     ]
     if "benchmark_composite" in equity_df.columns:
         equity_series.append({
@@ -444,19 +476,29 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
     ]
 
     weights_first = pd.to_datetime(weights_df.iloc[0]["date"]).strftime("%Y-%m-%d")
-    first_meaningful = _first_meaningful_group_holdings_date(weights_df)
+    # GICS-style lanes only apply to Adaptive Rotation; RSI and others use different construction.
+    show_groups = run.strategy_slug == "adaptive_rotation"
+    if show_groups:
+        group_tl = _group_timeline(weights_df)
+        max_g = MAX_TIMELINE_ACTIVE_GROUPS
+        first_meaningful = _first_meaningful_group_holdings_date(weights_df)
+    else:
+        group_tl = []
+        max_g = 0
+        first_meaningful = None
 
     return {
         "run": run_metadata(run),
         "initial_capital": 1000.0,
-        "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
+        "max_timeline_active_groups": max_g,
+        "show_group_timeline": show_groups,
         "weights_first_date": weights_first,
         "first_meaningful_group_holdings_date": first_meaningful,
         "equity": equity_rows,
         "equity_series": equity_series,
         "drawdown": drawdown_rows,
         "regimes": _regime_spans(equity_rows),
-        "group_timeline": _group_timeline(weights_df),
+        "group_timeline": group_tl,
         "trades": read_trade_log(run),
     }
 

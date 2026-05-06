@@ -1,5 +1,8 @@
 export type BacktestRun = {
   id: string;
+  /** Deploy strategy id from deploy.sh (e.g. adaptive_rotation, rsi_reversion). */
+  strategy?: string;
+  legacy_id?: string;
   label: string;
   start: string;
   end: string;
@@ -72,6 +75,7 @@ export type VisualizationData = {
   initial_capital?: number;
   /** Cap on simultaneous group lanes (matches Adaptive Rotation max_active_groups). */
   max_timeline_active_groups?: number;
+  show_group_timeline?: boolean;
   /** First date row in the weights CSV (YYYY-MM-DD). */
   weights_first_date?: string | null;
   /**

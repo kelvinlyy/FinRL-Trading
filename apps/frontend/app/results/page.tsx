@@ -37,11 +37,12 @@ export default async function ResultsPage({
               Backtest charts and exports.
             </h1>
             <p className="text-subheading leading-[1.4] text-silver">
-              Interactive charts load from saved weights and daily price CSVs. Configure and launch new runs from{" "}
+              Interactive charts load from saved weights CSVs and daily prices under{" "}
+              <code className="text-caption text-ghost-blue">data/fmp_daily</code>. Configure and launch runs from{" "}
               <Link className="text-ghost-blue underline-offset-4 hover:underline" href="/">
                 Home
               </Link>
-              . A static matplotlib PNG appears here only when that dependency produced one.
+              . Static PNGs (matplotlib), when present, are linked below; the interactive chart uses API-computed equity.
             </p>
           </div>
           {selectedRun?.chart_url ? (
@@ -68,7 +69,7 @@ export default async function ResultsPage({
             {runs.map((run) => (
               <a
                 key={run.id}
-                href={`/results?run=${run.id}`}
+                href={`/results?run=${encodeURIComponent(run.id)}`}
                 className={`rounded-[32px] border px-5 py-3 text-body-sm ${
                   run.id === selectedId
                     ? "border-mercury-blue bg-mercury-blue text-pure-white"
