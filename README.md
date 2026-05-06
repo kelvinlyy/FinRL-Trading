@@ -66,12 +66,12 @@ The **browser command center** lives under `apps/` and talks to the same repo da
 
 | App | Path | Default port | Role |
 |:----|:-----|:-------------|:-----|
-| **Frontend** | `apps/frontend` | **3000** | Next.js UI: universe editor, backtest jobs, results charts |
-| **Backend** | `apps/backend` | **8000** | FastAPI: `/api/results`, `/api/backtest`, `/api/config`, `/api/data` |
+| **Frontend** | `apps/frontend` | **3000** | Next.js UI: universe editor, backtest jobs, results charts, data/settings, and explicit deferred notices for portfolio/trading |
+| **Backend** | `apps/backend` | **8000** | FastAPI: `/api/results`, `/api/backtest`, `/api/config`, `/api/data`, `/api/trading/status` |
 
 From the repo root, `./scripts/restart-dev-stack.sh` starts both processes. Open `http://localhost:3000` (hard-refresh after restarts). API docs: `http://127.0.0.1:8000/docs`.
 
-The Streamlit dashboard (`streamlit run src/web/app.py`, default **8501**) is now a **legacy notice page**. Active web features are integrated in `apps/frontend` + `apps/backend`.
+The Streamlit dashboard (`streamlit run src/web/app.py`, default **8501**) is now a **legacy notice page**. Active web features are integrated in `apps/frontend` + `apps/backend`; remaining legacy-only surfaces are intentionally marked as deferred in the apps UI.
 
 ```
 finrl-trading/

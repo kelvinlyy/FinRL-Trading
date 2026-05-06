@@ -19,7 +19,11 @@ FastAPI service that exposes **read-only** Adaptive Rotation backtest artifacts 
 apps/backend/
 ├── main.py                 # FastAPI app, CORS, mounts results router + /artifacts static
 ├── api/
-│   └── routes_results.py   # REST routes under /api/results
+│   ├── routes_results.py   # REST routes under /api/results
+│   ├── routes_backtest.py  # Job launch + polling
+│   ├── routes_data.py      # Data layer overview
+│   ├── routes_config.py    # Runtime + adaptive YAML endpoints
+│   └── routes_trading.py   # Read-only trading readiness
 └── services/
     └── results.py          # Run discovery, CSV reads, equity / visualization payloads
 ```
@@ -46,9 +50,12 @@ apps/backend/
 | **Weights**            | Raw portfolio weights CSV for inspection.                                                                                                                                                                                                                                                                                              |
 | **Chart PNG**          | Serves the matplotlib-generated `enhanced_backtest_*.png`.                                                                                                                                                                                                                                                                             |
 | **Visualization JSON** | Structured series for the SPA: equity (strategy + SPY/QQQ), drawdown, regime bands, group activation timeline, trades; includes `initial_capital`, `max_timeline_active_groups` (2), and per-row `group_weight_total` for each of the three display groups. The chart keeps at most **two** lanes per date (ranked by total group weight); the frontend applies the same cap again as a safeguard. |
+| **Data overview**      | CSV cache and SQLite stats for the data layer (`/api/data/overview`). |
+| **Runtime config**     | Non-secret settings and credential booleans (`/api/config/runtime`) plus adaptive rotation YAML read/write (`/api/config/adaptive-rotation`). |
+| **Trading status**     | Read-only paper/live readiness metadata (`/api/trading/status`); no broker order execution from HTTP. |
 
 
-**Out of scope (by design):** live trading, auth, persisting user settings, triggering backtests over HTTP, non–Adaptive-Rotation strategies.
+**Out of scope (by design):** broker order execution over HTTP, auth, persisting user settings, non–Adaptive-Rotation strategy execution logic.
 
 ---
 
@@ -101,6 +108,15 @@ No mandatory env vars for read-only results. Optional keys (Alpaca, FMP, etc.) a
 | `GET`  | `/api/results/{run_id}/visualization` | JSON for interactive dashboard chart               |
 | `GET`  | `/api/results/{run_id}/chart`         | PNG file response                                  |
 | `GET`  | `/artifacts/{filename}`               | Static files from the adaptive_rotation output dir |
+| `GET`  | `/api/data/overview`                  | Local CSV + SQLite summary                         |
+| `GET`  | `/api/config/runtime`                 | Non-secret runtime metadata                        |
+| `GET`  | `/api/config/adaptive-rotation`       | Read adaptive YAML public fields                   |
+| `PUT`  | `/api/config/adaptive-rotation`       | Save adaptive YAML universe fields                 |
+| `GET`  | `/api/backtest/strategies`            | Strategies parsed from `deploy.sh`                 |
+| `POST` | `/api/backtest/run`                   | Queue deploy-backed backtest/single job            |
+| `GET`  | `/api/backtest/jobs`                  | List recent jobs                                   |
+| `GET`  | `/api/backtest/jobs/{job_id}`         | Poll job status                                    |
+| `GET`  | `/api/trading/status`                 | Deferred live/paper trading status                 |
 
 
 `run_id` matches the pattern `{YYYY-MM-DD}_to_{YYYY-MM-DD}` derived from `enhanced_backtest_*_to_*.png` filenames.

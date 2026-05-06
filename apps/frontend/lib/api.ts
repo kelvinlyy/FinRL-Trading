@@ -11,6 +11,7 @@ import type {
   RuntimePublicConfig,
   StrategyGroup,
   Trade,
+  TradingStatus,
   VisualizationData,
 } from "./types";
 
@@ -294,6 +295,16 @@ export async function getRuntimePublicConfig(): Promise<RuntimePublicConfig | nu
     const response = await fetch(`${API_BASE}/api/config/runtime`, _apiFetchInit());
     if (!response.ok) return null;
     return (await response.json()) as RuntimePublicConfig;
+  } catch {
+    return null;
+  }
+}
+
+export async function getTradingStatus(): Promise<TradingStatus | null> {
+  try {
+    const response = await fetch(`${API_BASE}/api/trading/status`, _apiFetchInit());
+    if (!response.ok) return null;
+    return (await response.json()) as TradingStatus;
   } catch {
     return null;
   }
