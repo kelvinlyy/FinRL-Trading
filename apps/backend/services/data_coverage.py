@@ -72,9 +72,8 @@ class DataCoverageReport:
             "ok": self.ok,
             "message": (
                 "Local Yahoo CSV data under data/fmp_daily is incomplete for this backtest. "
-                "Fix the issues below, or run once from the repo root: "
-                "./deploy.sh --strategy adaptive_rotation --mode backtest --start <s> --end <e> "
-                "(omit --skip-download) to refresh downloads."
+                "If you are using the web console, start a backtest or paper job (it will download prices automatically). "
+                "From the CLI you can also run deploy.sh without --skip-download."
             ),
             "data_dir": self.data_dir,
             "config_path": self.config_path,

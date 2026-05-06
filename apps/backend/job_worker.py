@@ -92,6 +92,7 @@ def main() -> None:
     out_path = job_dir / "deploy.stdout.log"
     err_path = job_dir / "deploy.stderr.log"
 
+    # Omit --skip-download so deploy.sh step [2/3] refreshes Yahoo CSVs under data/fmp_daily when needed.
     cmd = ["bash", str(DEPLOY_SCRIPT), "--strategy", strategy, "--mode", mode]
     if mode == "backtest":
         cmd += ["--start", start, "--end", end]
@@ -137,6 +138,7 @@ def main() -> None:
     meta["returncode"] = returncode
     if mode == "backtest":
         legacy_run_id = f"{start}_to_{end}"
+        # All registered runners write this summary file (adaptive, RSI, …).
         summary_csv = weights_dir / f"backtest_{start}_to_{end}.csv"
         if returncode == 0 and summary_csv.is_file():
             meta["status"] = "completed"

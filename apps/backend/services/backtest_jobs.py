@@ -35,6 +35,8 @@ def _infer_progress(stdout: str, stderr: str, status: str) -> dict[str, Any]:
         "Enhanced chart saved to:" in text
         or "Backtest Summary" in text
         or "Detailed portfolio weights saved to:" in text
+        or "Detailed weights saved to:" in text
+        or "Equity curve saved to:" in text
     ):
         return {"pct": 97, "label": "Saving outputs…", "phase": "finalize", "indeterminate": False}
 
@@ -47,6 +49,19 @@ def _infer_progress(stdout: str, stderr: str, status: str) -> dict[str, Any]:
         return {
             "pct": min(max(pct, 52), 96),
             "label": f"Simulation: day {cur} / {total}",
+            "phase": "strategy_loop",
+            "indeterminate": False,
+        }
+
+    rsi_prog = list(re.finditer(r"Progress:\s*(\d+)/(\d+)\s*rebalance dates processed", text))
+    if rsi_prog:
+        last = rsi_prog[-1]
+        cur, total = int(last.group(1)), max(int(last.group(2)), 1)
+        frac = min(cur / total, 1.0)
+        pct = int(52 + frac * 44)
+        return {
+            "pct": min(max(pct, 52), 96),
+            "label": f"Simulation: rebalance {cur} / {total}",
             "phase": "strategy_loop",
             "indeterminate": False,
         }

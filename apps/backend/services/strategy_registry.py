@@ -67,6 +67,8 @@ def config_path_for_strategy(name: str) -> Path:
 def resolve_strategy_output_dirs(strategy_name: str) -> tuple[Path, Path]:
     """
     Return ``(weights_dir, audit_dir)`` from the strategy YAML ``paths`` section.
+
+    Used by ``job_worker`` to locate artifacts (each strategy writes under its own dirs).
     """
     import yaml
 
