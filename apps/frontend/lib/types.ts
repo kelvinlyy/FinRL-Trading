@@ -75,6 +75,7 @@ export type VisualizationData = {
   initial_capital?: number;
   /** Cap on simultaneous group lanes (matches Adaptive Rotation max_active_groups). */
   max_timeline_active_groups?: number;
+  show_group_timeline?: boolean;
   /** First date row in the weights CSV (YYYY-MM-DD). */
   weights_first_date?: string | null;
   /**

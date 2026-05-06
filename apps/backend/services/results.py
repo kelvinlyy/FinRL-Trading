@@ -8,8 +8,11 @@ from typing import Any
 
 import pandas as pd
 
-from backend.services.adaptive_yaml import load_adaptive_rotation_public
-from backend.services.strategy_registry import list_deploy_strategies, resolve_strategy_output_dirs
+from backend.services.strategy_registry import (
+    config_path_for_strategy,
+    list_deploy_strategies,
+    resolve_strategy_output_dirs,
+)
 
 # apps/backend/services/ -> repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -154,18 +157,39 @@ def _optional_float(value: Any) -> float | None:
         return None
 
 
-def _resolved_benchmark_symbols() -> tuple[list[str], str]:
-    """Symbols and label from live Adaptive Rotation YAML (matches strategy excess benchmark group)."""
-    try:
-        cfg = load_adaptive_rotation_public()
-    except (OSError, FileNotFoundError, ValueError):
-        return (["QQQ"], "QQQ")
-    syms = cfg.get("excess_return_benchmark_symbols") or []
-    if not syms:
-        one = (cfg.get("excess_return_benchmark") or "QQQ").strip()
-        syms = [one] if one else ["QQQ"]
-    label = str(cfg.get("benchmark_excess_label") or (" + ".join(syms) if len(syms) > 1 else syms[0]))
-    return (list(syms), label)
+def _strategy_yaml(strategy_slug: str) -> dict[str, Any]:
+    import yaml
+
+    path = config_path_for_strategy(strategy_slug)
+    with path.open(encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
+
+
+def _strategy_display_name(strategy_slug: str) -> str:
+    raw = _strategy_yaml(strategy_slug)
+    meta = raw.get("strategy") or {}
+    name = str(meta.get("name") or strategy_slug).strip() or strategy_slug
+    ver = meta.get("version")
+    if ver:
+        return f"{name} ({ver})"
+    return name
+
+
+def _resolved_benchmark_symbols_for_strategy(strategy_slug: str) -> tuple[list[str], str]:
+    """Benchmark composite symbols + label from **that** strategy's YAML (not always Adaptive Rotation)."""
+    raw = _strategy_yaml(strategy_slug)
+    bench = raw.get("benchmark") or {}
+    extra = bench.get("excess_return_benchmark_symbols")
+    if isinstance(extra, list) and extra:
+        syms = [str(s).strip() for s in extra if str(s).strip()]
+        if syms:
+            label = bench.get("benchmark_excess_label") or (" + ".join(syms) if len(syms) > 1 else syms[0])
+            return (syms, str(label))
+    one = bench.get("excess_return_benchmark")
+    if one is None or str(one).strip() == "":
+        one = "SPY"
+    one = str(one).strip()
+    return ([one], one)
 
 
 def _normalized_buyhold(
@@ -197,13 +221,13 @@ def _load_price_frame(symbols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(prices)
 
 
-def _compute_equity(weights_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+def _compute_equity(weights_df: pd.DataFrame, strategy_slug: str) -> tuple[pd.DataFrame, str]:
     weights_df = weights_df.copy()
     weights_df["date"] = pd.to_datetime(weights_df["date"])
 
     meta_cols = {"date", "cash", "regime"}
     asset_cols = [column for column in weights_df.columns if column not in meta_cols]
-    bench_syms, bench_label = _resolved_benchmark_symbols()
+    bench_syms, bench_label = _resolved_benchmark_symbols_for_strategy(strategy_slug)
     price_symbols = sorted(set(asset_cols) | set(bench_syms) | {"SPY", "QQQ"})
     price_df = _load_price_frame(price_symbols)
 
@@ -398,7 +422,8 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
         return {
             "run": run_metadata(run),
             "initial_capital": 1000.0,
-            "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
+            "max_timeline_active_groups": 0,
+            "show_group_timeline": run.strategy_slug == "adaptive_rotation",
             "weights_first_date": None,
             "first_meaningful_group_holdings_date": None,
             "equity": [],
@@ -409,7 +434,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
         }
 
     weights_df = _normalize_weights_frame(pd.read_csv(run.weights_path))
-    equity_df, bench_label = _compute_equity(weights_df)
+    equity_df, bench_label = _compute_equity(weights_df, run.strategy_slug)
     strategy = equity_df["strategy"]
     drawdown = (strategy - strategy.cummax()) / strategy.cummax()
 
@@ -428,8 +453,9 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
             er["QQQ"] = _optional_float(row.get("QQQ"))
         equity_rows.append(er)
 
+    strat_label = _strategy_display_name(run.strategy_slug)
     equity_series: list[dict[str, str]] = [
-        {"key": "strategy", "label": "Strategy", "color": "#5266eb"},
+        {"key": "strategy", "label": strat_label, "color": "#5266eb"},
     ]
     if "benchmark_composite" in equity_df.columns:
         equity_series.append({
@@ -450,19 +476,29 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
     ]
 
     weights_first = pd.to_datetime(weights_df.iloc[0]["date"]).strftime("%Y-%m-%d")
-    first_meaningful = _first_meaningful_group_holdings_date(weights_df)
+    # GICS-style lanes only apply to Adaptive Rotation; RSI and others use different construction.
+    show_groups = run.strategy_slug == "adaptive_rotation"
+    if show_groups:
+        group_tl = _group_timeline(weights_df)
+        max_g = MAX_TIMELINE_ACTIVE_GROUPS
+        first_meaningful = _first_meaningful_group_holdings_date(weights_df)
+    else:
+        group_tl = []
+        max_g = 0
+        first_meaningful = None
 
     return {
         "run": run_metadata(run),
         "initial_capital": 1000.0,
-        "max_timeline_active_groups": MAX_TIMELINE_ACTIVE_GROUPS,
+        "max_timeline_active_groups": max_g,
+        "show_group_timeline": show_groups,
         "weights_first_date": weights_first,
         "first_meaningful_group_holdings_date": first_meaningful,
         "equity": equity_rows,
         "equity_series": equity_series,
         "drawdown": drawdown_rows,
         "regimes": _regime_spans(equity_rows),
-        "group_timeline": _group_timeline(weights_df),
+        "group_timeline": group_tl,
         "trades": read_trade_log(run),
     }
 
