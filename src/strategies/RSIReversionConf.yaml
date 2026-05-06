@@ -1,0 +1,47 @@
+# RSI mean-reversion: favors symbols with lower RSI (oversold) vs configured thresholds.
+strategy:
+  name: rsi_mean_reversion
+  version: v1.0.0
+
+paths:
+  data_root: ./data/fmp_daily
+  output_root: ./src/strategies/output
+  state_dir: ./src/strategies/output/state/rsi_reversion
+  audit_dir: ./src/strategies/output/audit/rsi_reversion
+  weights_dir: ./src/strategies/output/weights/rsi_reversion
+
+dates:
+  start_date: 2017-01-01
+  end_date: null
+
+# Same layout as adaptive rotation so deploy.sh can discover symbols for downloads.
+asset_groups:
+  tech_sample:
+    max_assets: 10
+    symbols:
+      - AAPL
+      - MSFT
+      - NVDA
+      - META
+      - AMZN
+      - GOOGL
+      - TSLA
+  diversification:
+    max_assets: 10
+    symbols:
+      - XOM
+      - CVX
+      - GLD
+      - TLT
+      - XLU
+
+benchmark:
+  excess_return_benchmark: SPY
+
+rsi:
+  period: 14
+  # Score = max(0, entry_rsi_max - RSI); only names with RSI < exit_rsi_min compete.
+  entry_rsi_max: 40
+  exit_rsi_min: 70
+  invested_cap: 0.95
+  max_positions: 6
