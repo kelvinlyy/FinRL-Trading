@@ -1,0 +1,14 @@
+---
+description: Require local branch+commit before any push/PR
+alwaysApply: true
+---
+
+# Local-first PR workflow
+
+- At the start of a new chat, if the current branch is `master`, run `git pull` before any other repo action.
+- For any code change, create and check out an informative local branch first (prefer `cursor/<short-description>`).
+- Make the requested edits and commit locally before proposing any remote actions.
+- After the local commit is ready, ask the user whether to:
+  - push the branch, and
+  - create a pull request.
+- Do not push or create PRs unless the user explicitly asks in that turn.
