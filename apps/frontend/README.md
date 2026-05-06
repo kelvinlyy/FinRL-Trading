@@ -2,7 +2,7 @@
 
 **Next.js 15** (App Router) + **Tailwind CSS 3** single-page experience for FinRL-X Adaptive Rotation results. UI language follows the **Mercury – Mountain Top Command Center** direction (Refero): dark surfaces, restrained typography, Mercury Blue accents, “command” layout.
 
-The app is **static-first**: pages are mostly server components that fetch the FastAPI backend at request time for `/results`. No mock trading UI; TBD areas from the legacy Streamlit app are omitted.
+The app is **static-first**: pages are mostly server components that fetch the FastAPI backend at request time. Legacy Streamlit-only surfaces are either migrated (`/data`, `/settings`) or explicitly deferred with in-app notices (`/portfolio`, `/trading`).
 
 ---
 
@@ -30,7 +30,10 @@ apps/frontend/
 │   ├── layout.tsx            # Root layout, fonts, globals
 │   ├── page.tsx              # Command / home
 │   ├── results/page.tsx      # Saved runs + interactive chart
-│   └── strategy/page.tsx     # Adaptive Rotation methodology (static)
+│   ├── data/page.tsx         # Data overview (CSV + SQLite stats)
+│   ├── settings/page.tsx     # Runtime metadata + credential booleans
+│   ├── portfolio/page.tsx    # Portfolio-analysis migration notice
+│   └── trading/page.tsx      # Live/paper-trading readiness notice
 ├── components/               # UI building blocks + chart
 ├── lib/
 │   ├── api.ts                # fetch() helpers → FastAPI
@@ -55,12 +58,15 @@ apps/frontend/
 
 | Route / area    | What it does                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `**/`**         | Command dashboard: overview copy and navigation to Results / Strategy.                                                                                  |
+| `**/`**         | Command dashboard: universe config + backtest launch with navigation to all app surfaces.                                                              |
 | `**/results`**  | Lists discovered runs (from API); run selector; summary cards; **interactive** equity / regime / drawdown / group-timeline chart; link to download PNG. |
-| `**/strategy`** | Static explanation of Adaptive Rotation (methodology), no live execution.                                                                               |
+| `**/data`**     | Read-only data layer status (CSV cache + SQLite record stats + refresh guidance).                                                                       |
+| `**/settings`** | Runtime metadata and non-secret credential readiness flags.                                                                                              |
+| `**/portfolio`** | Explicit deferred notice: dedicated account-level portfolio analytics are not in the app yet; use `/results` for run analytics.                         |
+| `**/trading`**  | Explicit deferred notice: live/paper broker execution is CLI-only; page shows readiness status from backend.                                            |
 
 
-**Not included:** live trading, settings persistence, generic demo backtests, Streamlit-era TBD sections.
+**Not included:** broker order execution from web requests, settings persistence, generic demo backtests.
 
 ---
 

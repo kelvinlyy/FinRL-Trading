@@ -206,3 +206,15 @@ export type RuntimePublicConfig = {
   web_legacy_streamlit_port: number;
 };
 
+export type TradingStatus = {
+  mode: "deferred";
+  execution_enabled: boolean;
+  can_paper_trade_from_cli: boolean;
+  alpaca: {
+    base_url: string;
+    use_paper_trading: boolean;
+  };
+  next_steps: string[];
+  message: string;
+};
+
