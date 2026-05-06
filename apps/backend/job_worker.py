@@ -65,6 +65,8 @@ def main() -> None:
     strategy = meta.get("strategy", "adaptive_rotation")
     mode = meta.get("mode", "backtest")
     single_date = meta.get("single_date")
+    dry_run = bool(meta.get("dry_run", False))
+    account_name = meta.get("account_name")
 
     if not DEPLOY_SCRIPT.is_file():
         meta["status"] = "failed"
@@ -84,8 +86,14 @@ def main() -> None:
     cmd = ["bash", str(DEPLOY_SCRIPT), "--strategy", strategy, "--mode", mode, "--skip-download"]
     if mode == "backtest":
         cmd += ["--start", start, "--end", end]
+    elif mode == "single":
+        cmd += ["--date", single_date or start]
     else:
         cmd += ["--date", single_date or start]
+        if dry_run:
+            cmd += ["--dry-run"]
+        if account_name:
+            cmd += ["--account", account_name]
 
     returncode: int | None = None
     try:
@@ -136,7 +144,7 @@ def main() -> None:
             meta["status"] = "failed"
             meta["result_run_id"] = None
             meta["error"] = "Backtest command failed (non-zero exit)"
-    else:
+    elif mode == "single":
         d = single_date or start
         run_id = f"single_{d}"
         # ``run_adaptive_rotation_strategy.py --date`` writes ``audit_<date>.json`` (see run_single_date).
@@ -156,6 +164,25 @@ def main() -> None:
             meta["status"] = "failed"
             meta["result_run_id"] = None
             meta["error"] = "Single-date deploy command failed (non-zero exit)"
+    else:
+        d = single_date or start
+        run_id = f"paper_{d}"
+        audit_json = RESULTS_DIR / f"execution_{d}.json"
+        if returncode == 0 and audit_json.is_file():
+            meta["status"] = "completed"
+            meta["result_run_id"] = run_id
+            meta["error"] = None
+        elif returncode == 0:
+            meta["status"] = "failed"
+            meta["result_run_id"] = None
+            meta["error"] = (
+                f"deploy.sh exited 0 but expected execution log was not found ({audit_json.name}). "
+                "Check deploy logs for trading errors."
+            )
+        else:
+            meta["status"] = "failed"
+            meta["result_run_id"] = None
+            meta["error"] = "Paper deploy command failed (non-zero exit)"
 
     _atomic_write_meta(job_dir, meta)
     sys.exit(0 if meta["status"] == "completed" else 1)

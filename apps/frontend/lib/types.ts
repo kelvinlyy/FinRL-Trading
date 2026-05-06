@@ -207,7 +207,7 @@ export type RuntimePublicConfig = {
 };
 
 export type TradingStatus = {
-  mode: "deferred";
+  mode: "deferred" | "paper_web_enabled";
   execution_enabled: boolean;
   can_paper_trade_from_cli: boolean;
   alpaca: {
@@ -216,5 +216,14 @@ export type TradingStatus = {
   };
   next_steps: string[];
   message: string;
+};
+
+export type PortfolioOverview = {
+  has_run: boolean;
+  message: string;
+  run: { id: string; start: string; end: string; label: string } | null;
+  kpis: Record<string, number>;
+  positions: Array<{ symbol: string; weight: number; weight_pct: number; share_of_invested_pct: number }>;
+  trades: { count: number; latest: Array<Record<string, unknown>> };
 };
 

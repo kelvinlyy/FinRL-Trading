@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { getTradingStatus } from "@/lib/api";
+import { TradingExecutionPanel } from "@/components/trading-execution-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,9 @@ export default async function TradingPage() {
             <p className="text-body-sm text-red-200">Could not load /api/trading/status (is the API on port 8000?).</p>
           )}
         </section>
+        <div className="mt-8">
+          <TradingExecutionPanel />
+        </div>
         <p className="mt-10 text-body-sm text-silver">
           Use <code className="text-ghost-blue">./deploy.sh --strategy adaptive_rotation --mode paper --dry-run</code> for
           paper-trading preview from the repo root.

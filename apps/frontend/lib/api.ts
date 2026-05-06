@@ -11,6 +11,7 @@ import type {
   RuntimePublicConfig,
   StrategyGroup,
   Trade,
+  PortfolioOverview,
   TradingStatus,
   VisualizationData,
 } from "./types";
@@ -308,6 +309,50 @@ export async function getTradingStatus(): Promise<TradingStatus | null> {
   } catch {
     return null;
   }
+}
+
+export async function getPortfolioOverview(): Promise<PortfolioOverview | null> {
+  try {
+    const response = await fetch(`${API_BASE}/api/portfolio/overview`, _apiFetchInit());
+    if (!response.ok) return null;
+    return (await response.json()) as PortfolioOverview;
+  } catch {
+    return null;
+  }
+}
+
+export async function startTradingRun(payload: {
+  strategy?: string;
+  date?: string;
+  dry_run?: boolean;
+  account_name?: string;
+}): Promise<{ job_id: string; status: string }> {
+  const response = await fetch(
+    `${API_BASE}/api/trading/run`,
+    _apiFetchInit(
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      { timeoutMs: API_MUTATION_TIMEOUT_MS },
+    ),
+  );
+  const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+  if (!response.ok) {
+    const msg = _formatFastApiDetail(body.detail) || response.statusText;
+    throw new Error(msg || `HTTP ${response.status}`);
+  }
+  return body as { job_id: string; status: string };
+}
+
+export async function getTradingJob(jobId: string): Promise<BacktestJob> {
+  const response = await fetch(`${API_BASE}/api/trading/jobs/${jobId}`, _apiFetchInit());
+  if (!response.ok) {
+    const detail = await readErrorDetail(response);
+    throw new ApiRequestError(detail || `HTTP ${response.status}`, response.status);
+  }
+  return response.json() as Promise<BacktestJob>;
 }
 
 export async function listDeployStrategies(): Promise<DeployStrategyRow[]> {

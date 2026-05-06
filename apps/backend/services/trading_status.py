@@ -19,8 +19,8 @@ def trading_status_public() -> dict[str, Any]:
     )
 
     return {
-        "mode": "deferred",
-        "execution_enabled": False,
+        "mode": "paper_web_enabled",
+        "execution_enabled": True,
         "can_paper_trade_from_cli": can_paper_trade,
         "alpaca": {
             "base_url": cfg.alpaca.base_url,
@@ -28,11 +28,11 @@ def trading_status_public() -> dict[str, Any]:
         },
         "next_steps": [
             "Configure APCA_API_KEY and APCA_API_SECRET in .env.",
-            "Run deploy.sh in paper mode from the repo root.",
-            "Audit generated signal and execution logs before enabling any live capital path.",
+            "Run a dry-run paper execution from the Trading page to preview orders.",
+            "Disable dry-run only after reviewing execution logs and account protections.",
         ],
         "message": (
-            "Live/paper trading remains CLI-only for now. The apps console intentionally exposes "
-            "read-only readiness status and does not submit broker orders."
+            "Paper trading can now be launched from the apps console. Keep dry-run enabled while "
+            "validating weights, order plans, and account constraints."
         ),
     }
