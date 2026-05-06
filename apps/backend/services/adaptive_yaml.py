@@ -177,16 +177,20 @@ def save_adaptive_rotation_public(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(fb_in, dict):
         raise ValueError("portfolio_fallback must be an object.")
     bench_syms_in = payload.get("excess_return_benchmark_symbols")
-    if not isinstance(bench_syms_in, list):
-        raise ValueError("excess_return_benchmark_symbols must be a list.")
-    bench_clean = _parse_symbol_list(bench_syms_in, max_count=_MAX_BENCHMARK_SYMBOLS)
+    if bench_syms_in is not None:
+        if not isinstance(bench_syms_in, list):
+            raise ValueError("excess_return_benchmark_symbols must be a list or omitted.")
+        bench_clean = _parse_symbol_list(bench_syms_in, max_count=_MAX_BENCHMARK_SYMBOLS)
+    else:
+        bench_clean = None
 
     with open(CONFIG_PATH, encoding="utf-8") as handle:
         raw: dict[str, Any] = yaml.safe_load(handle) or {}
 
-    bench_block = raw.setdefault("benchmark", {})
-    bench_block["excess_return_benchmark_symbols"] = bench_clean
-    bench_block["excess_return_benchmark"] = bench_clean[0]
+    if bench_clean is not None:
+        bench_block = raw.setdefault("benchmark", {})
+        bench_block["excess_return_benchmark_symbols"] = bench_clean
+        bench_block["excess_return_benchmark"] = bench_clean[0]
 
     portfolio = raw.setdefault("portfolio", {})
     fb = portfolio.setdefault("fallback", {})

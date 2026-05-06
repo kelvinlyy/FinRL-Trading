@@ -158,11 +158,21 @@ export type AdaptiveRotationConfig = {
   baseline_price_csv_candidates: string[];
 };
 
-/** Body for PUT /api/config/adaptive-rotation */
+/** Body for PUT /api/config/adaptive-rotation (benchmark optional — use strategy benchmark editor). */
 export type AdaptiveRotationWritePayload = {
-  excess_return_benchmark_symbols: string[];
+  excess_return_benchmark_symbols?: string[];
   portfolio_fallback: { enabled: boolean; symbols: string[] };
   asset_groups: Array<{ id: string; max_assets: number; symbols: string[] }>;
+};
+
+/** GET /api/config/strategy-benchmark/{strategy} */
+export type StrategyBenchmarkConfig = {
+  strategy: string;
+  config_file: string;
+  config_mtime?: number;
+  excess_return_benchmark_symbols: string[];
+  benchmark_excess_label?: string;
+  benchmark?: Record<string, unknown>;
 };
 
 export type BacktestJob = {

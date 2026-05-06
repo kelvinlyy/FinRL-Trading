@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ConfigureUniverseEditor } from "@/components/configure-universe-editor";
 import { RunBacktestPanel } from "@/components/run-backtest-panel";
+import { StrategyBenchmarkEditor } from "@/components/strategy-benchmark-editor";
 import { listDeployStrategies } from "@/lib/api";
 import type { AdaptiveRotationConfig, DeployStrategyRow } from "@/lib/types";
 
@@ -17,9 +18,10 @@ export function HomeBacktestFlow({ initialAdaptiveConfig }: { initialAdaptiveCon
   useEffect(() => {
     void listDeployStrategies().then((rows) => {
       setDeployStrategies(rows);
-      if (rows.length) {
-        setDeployStrategy((prev) => (rows.some((r) => r.name === prev) ? prev : rows[0].name));
-      }
+      setDeployStrategy((prev) => {
+        if (rows.length === 0) return prev;
+        return rows.some((r) => r.name === prev) ? prev : rows[0].name;
+      });
     });
   }, []);
 
@@ -79,9 +81,9 @@ export function HomeBacktestFlow({ initialAdaptiveConfig }: { initialAdaptiveCon
           <div className="max-w-3xl space-y-4 rounded-md border border-lead/35 bg-midnight-slate/50 p-6 md:p-8">
             <h2 className="font-display text-heading-sm font-[420] text-starlight">Strategy parameters</h2>
             <p className="text-body-sm text-silver">
-              The in-browser YAML editor applies to <code className="text-ghost-blue">adaptive_rotation</code> (rotating
-              asset groups). For <code className="text-ghost-blue">{deployStrategy}</code>, adjust the registered config file
-              in the repo and use{" "}
+              The in-browser universe editor applies to <code className="text-ghost-blue">adaptive_rotation</code>{" "}
+              (rotating asset groups). For <code className="text-ghost-blue">{deployStrategy}</code>, adjust the registered
+              config file in the repo and use{" "}
               <Link href="/data" className="text-ghost-blue underline-offset-4 hover:underline">
                 Data
               </Link>{" "}
@@ -89,6 +91,7 @@ export function HomeBacktestFlow({ initialAdaptiveConfig }: { initialAdaptiveCon
             </p>
           </div>
         )}
+        <StrategyBenchmarkEditor deployStrategy={deployStrategy} />
       </section>
     </>
   );

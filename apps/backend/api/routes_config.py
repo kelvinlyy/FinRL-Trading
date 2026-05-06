@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.services.adaptive_yaml import KNOWN_GROUP_IDS, load_adaptive_rotation_public, save_adaptive_rotation_public
+from backend.services.strategy_benchmark_yaml import load_strategy_benchmark_public, save_strategy_benchmark_public
+from backend.services.strategy_registry import is_known_strategy
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -96,16 +98,25 @@ class _FallbackWrite(BaseModel):
 
 
 class AdaptiveRotationWriteBody(BaseModel):
-    """Equal-weight excess benchmark: one or more tickers (same return math as a rotation group)."""
+    """
+    Universe fields for Adaptive Rotation YAML.
 
-    excess_return_benchmark_symbols: list[str] = Field(min_length=1, max_length=20)
+    Omit ``excess_return_benchmark_symbols`` to leave the benchmark block unchanged (use
+    ``PUT /api/config/strategy-benchmark/{strategy}`` from the shared benchmark editor).
+    """
+
+    excess_return_benchmark_symbols: list[str] | None = None
 
     @field_validator("excess_return_benchmark_symbols", mode="after")
     @classmethod
-    def strip_nonempty_bench(cls, v: list[str]) -> list[str]:
+    def strip_nonempty_bench(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
         out = [str(s).strip() for s in v if str(s).strip()]
         if not out:
             raise ValueError("Benchmark group needs at least one non-empty symbol.")
+        if len(out) > 20:
+            raise ValueError("Too many benchmark symbols (max 20).")
         return out
 
     portfolio_fallback: _FallbackWrite
@@ -124,6 +135,46 @@ def adaptive_rotation_config():
     """Return rotation groups, fallback sleeve, benchmark, and which baseline CSVs exist on disk."""
     try:
         return load_adaptive_rotation_public()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class StrategyBenchmarkWriteBody(BaseModel):
+    """Equal-weight excess benchmark tickers for any deploy-registered strategy YAML."""
+
+    excess_return_benchmark_symbols: list[str] = Field(min_length=1, max_length=20)
+
+    @field_validator("excess_return_benchmark_symbols", mode="after")
+    @classmethod
+    def strip_nonempty_bench_strategy(cls, v: list[str]) -> list[str]:
+        out = [str(s).strip() for s in v if str(s).strip()]
+        if not out:
+            raise ValueError("Benchmark group needs at least one non-empty symbol.")
+        return out
+
+
+@router.get("/strategy-benchmark/{strategy_name}")
+def strategy_benchmark_get(strategy_name: str):
+    """Return resolved benchmark symbols for the strategy's registered YAML."""
+    if not is_known_strategy(strategy_name):
+        raise HTTPException(status_code=404, detail=f"Unknown strategy: {strategy_name}")
+    try:
+        return load_strategy_benchmark_public(strategy_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/strategy-benchmark/{strategy_name}")
+def strategy_benchmark_put(strategy_name: str, body: StrategyBenchmarkWriteBody):
+    """Update only the ``benchmark`` section in the strategy's config file."""
+    if not is_known_strategy(strategy_name):
+        raise HTTPException(status_code=404, detail=f"Unknown strategy: {strategy_name}")
+    try:
+        return save_strategy_benchmark_public(strategy_name, body.excess_return_benchmark_symbols)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

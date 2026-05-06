@@ -9,6 +9,7 @@ import type {
   DeployStrategyRow,
   ResultsIndex,
   RuntimePublicConfig,
+  StrategyBenchmarkConfig,
   StrategyGroup,
   Trade,
   PortfolioOverview,
@@ -184,6 +185,57 @@ function _formatConfigWriteDetail(detail: unknown): string {
   if (Array.isArray(detail))
     return detail.map((x: { msg?: string }) => x.msg).filter(Boolean).join("; ");
   return "";
+}
+
+export async function getStrategyBenchmark(strategy: string): Promise<StrategyBenchmarkConfig | null> {
+  try {
+    const enc = encodeURIComponent(strategy);
+    const response = await fetch(`${API_BASE}/api/config/strategy-benchmark/${enc}`, _apiFetchInit());
+    if (!response.ok) return null;
+    return (await response.json()) as StrategyBenchmarkConfig;
+  } catch {
+    return null;
+  }
+}
+
+/** Write benchmark block to the strategy's registered YAML (same-origin proxy in browser). */
+export async function putStrategyBenchmark(
+  strategy: string,
+  symbols: string[],
+): Promise<StrategyBenchmarkConfig> {
+  const enc = encodeURIComponent(strategy);
+  const url =
+    typeof window === "undefined"
+      ? `${API_BASE}/api/config/strategy-benchmark/${enc}`
+      : `/api/config/strategy-benchmark/${enc}`;
+
+  let response: Response;
+  try {
+    response = await fetch(
+      url,
+      _apiFetchInit(
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ excess_return_benchmark_symbols: symbols }),
+        },
+        { timeoutMs: API_MUTATION_TIMEOUT_MS },
+      ),
+    );
+  } catch (cause) {
+    if (_isAbortError(cause)) {
+      throw new Error(
+        `Save timed out after ${API_MUTATION_TIMEOUT_MS / 1000}s. If the UI is open, check INTERNAL_API_BASE_URL / backend health.`,
+      );
+    }
+    throw cause;
+  }
+  const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+  if (!response.ok) {
+    const msg = _formatConfigWriteDetail(body.detail) || response.statusText;
+    throw new Error(msg || `HTTP ${response.status}`);
+  }
+  return body as StrategyBenchmarkConfig;
 }
 
 /** Validate and write universe fields to AdaptiveRotationConf YAML on the API host. */

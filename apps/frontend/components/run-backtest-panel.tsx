@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BacktestProgressBar } from "@/components/backtest-progress-bar";
 import { ApiRequestError, DataCoverageError, getBacktestJob, startBacktestRun } from "@/lib/api";
 import type { BacktestJob, DataCoverageDetail, DeployStrategyRow } from "@/lib/types";
@@ -104,6 +104,16 @@ export function RunBacktestPanel({
   const strategy = deployStrategy;
   const setStrategy = onDeployStrategyChange;
   const strategies = deployStrategies;
+
+  const strategySelectRows = useMemo(() => {
+    const base: DeployStrategyRow[] = strategies.length
+      ? strategies
+      : [{ name: "adaptive_rotation", config: "", runner: "" }];
+    if (strategy && !base.some((r) => r.name === strategy)) {
+      return [{ name: strategy, config: "", runner: "" }, ...base];
+    }
+    return base;
+  }, [strategies, strategy]);
   const [mode, setMode] = useState<"backtest" | "single">("backtest");
   const [singleDate, setSingleDate] = useState("2024-12-31");
   const [start, setStart] = useState("2024-01-01");
@@ -228,7 +238,7 @@ export function RunBacktestPanel({
             onChange={(ev) => setStrategy(ev.target.value)}
             className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
           >
-            {(strategies.length ? strategies : [{ name: "adaptive_rotation", config: "", runner: "" }]).map((s) => (
+            {(strategySelectRows).map((s) => (
               <option key={s.name} value={s.name}>
                 {s.name}
               </option>

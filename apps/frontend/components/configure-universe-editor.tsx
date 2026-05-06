@@ -31,27 +31,14 @@ function groupTextsFromConfig(cfg: AdaptiveRotationConfig): Record<string, strin
   return o;
 }
 
-function benchTextFromConfig(cfg: AdaptiveRotationConfig): string {
-  const syms = cfg.excess_return_benchmark_symbols;
-  if (syms && syms.length > 0) {
-    return symbolsToText(syms);
-  }
-  if (cfg.excess_return_benchmark) {
-    return String(cfg.excess_return_benchmark).trim();
-  }
-  return "QQQ";
-}
-
 export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: AdaptiveRotationConfig }) {
   const [config, setConfig] = useState<AdaptiveRotationConfig>(initialConfig);
   const [fbText, setFbText] = useState(() => symbolsToText(initialConfig.portfolio_fallback.symbols));
-  const [benchText, setBenchText] = useState(() => benchTextFromConfig(initialConfig));
   const [groupTexts, setGroupTexts] = useState(() => groupTextsFromConfig(initialConfig));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const benchPreview = useMemo(() => parseTickers(benchText), [benchText]);
   const fallbackPreview = useMemo(() => parseTickers(fbText), [fbText]);
   const groupPreviews = useMemo(() => {
     const m: Record<string, string[]> = {};
@@ -76,12 +63,7 @@ export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: Adap
     setSuccess(null);
     setSaving(true);
     try {
-      const benchSyms = parseTickers(benchText);
-      if (!benchSyms.length) {
-        throw new Error("Excess benchmark group needs at least one ticker.");
-      }
       const payload: AdaptiveRotationWritePayload = {
-        excess_return_benchmark_symbols: benchSyms,
         portfolio_fallback: {
           enabled: config.portfolio_fallback.enabled === true,
           symbols: parseTickers(fbText),
@@ -102,7 +84,6 @@ export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: Adap
       }
       const next = await putAdaptiveRotationConfig(payload);
       setConfig(next);
-      setBenchText(benchTextFromConfig(next));
       setFbText(symbolsToText(next.portfolio_fallback.symbols));
       setGroupTexts(groupTextsFromConfig(next));
       setSuccess("Saved. YAML on disk was updated (full-file rewrite). Add or refresh CSVs under data/fmp_daily as needed.");
@@ -127,7 +108,8 @@ export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: Adap
           <Link href="/#run-backtest" className="text-ghost-blue hover:underline">
             Run backtest
           </Link>{" "}
-          to verify coverage.
+          to verify coverage. Benchmark tickers for the selected deploy strategy are edited in the{" "}
+          <span className="font-[480] text-starlight/90">Benchmark</span> section below.
         </p>
         {error ? (
           <p className="mt-4 rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-body-sm text-red-100">
@@ -260,43 +242,6 @@ export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: Adap
             <span>none of the listed candidates</span>
           )}
           . Editing tickers above does not create CSVs.
-        </p>
-      </section>
-
-      <section className="rounded-md border border-lead/35 bg-midnight-slate/50 p-6 md:p-8">
-        <p className="eyebrow">Benchmark</p>
-        <h2 className="mt-2 font-display text-heading-sm font-[420] text-starlight">Excess return vs (equal-weight group)</h2>
-        <p className="mt-3 max-w-3xl text-body-sm text-silver">
-          Same mechanics as a rotation sleeve: daily returns are averaged across these tickers, then each group is
-          scored versus that composite. YAML keys:{" "}
-          <code className="text-caption text-ghost-blue">benchmark.excess_return_benchmark_symbols</code> and{" "}
-          <code className="text-caption text-ghost-blue">benchmark.excess_return_benchmark</code> (first symbol,
-          legacy).
-        </p>
-        <label className="mt-6 block text-caption uppercase tracking-[0.18em] text-silver" htmlFor="bench">
-          Benchmark tickers (comma or line-separated)
-        </label>
-        <textarea
-          id="bench"
-          rows={4}
-          className="mt-2 w-full max-w-2xl rounded-md border border-lead/50 bg-deep-space px-4 py-3 font-mono text-body-sm text-starlight outline-none focus:border-ghost-blue"
-          value={benchText}
-          onChange={(e) => {
-            setBenchText(e.target.value);
-            setSuccess(null);
-            setError(null);
-          }}
-        />
-        <p className="mt-2 text-caption text-silver">
-          Parsed ({benchPreview.length}):{" "}
-          {benchPreview.length ? (
-            <code className="text-mercury-blue">{benchPreview.join(", ")}</code>
-          ) : (
-            "—"
-          )}
-          {benchPreview.length > 1 ? (
-            <span className="ml-2 text-silver/80">· composite: {benchPreview.join(" + ")}</span>
-          ) : null}
         </p>
       </section>
     </>
