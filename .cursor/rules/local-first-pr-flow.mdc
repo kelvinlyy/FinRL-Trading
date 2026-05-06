@@ -5,7 +5,9 @@ alwaysApply: true
 
 # Local-first PR workflow
 
-- At the start of a new chat, if the current branch is `master`, run `git pull` before any other repo action.
+- At the start of a new chat:
+  - if the current branch is `master`, run `git pull` before any other repo action.
+  - if the current branch is not `main`, switch to `main` and run `git pull` before any other repo action.
 - Whenever a PR is merged, switch to `main` and run `git pull` before continuing work.
 - For any code change, create and check out an informative local branch first (prefer `cursor/<short-description>`).
 - Make the requested edits and commit locally before proposing any remote actions.
