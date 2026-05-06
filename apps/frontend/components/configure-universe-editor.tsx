@@ -152,43 +152,6 @@ export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: Adap
       </section>
 
       <section className="mb-12 rounded-md border border-lead/35 bg-midnight-slate/50 p-6 md:p-8">
-        <p className="eyebrow">Benchmark</p>
-        <h2 className="mt-2 font-display text-heading-sm font-[420] text-starlight">Excess return vs (equal-weight group)</h2>
-        <p className="mt-3 max-w-3xl text-body-sm text-silver">
-          Same mechanics as a rotation sleeve: daily returns are averaged across these tickers, then each group is
-          scored versus that composite. YAML keys:{" "}
-          <code className="text-caption text-ghost-blue">benchmark.excess_return_benchmark_symbols</code> and{" "}
-          <code className="text-caption text-ghost-blue">benchmark.excess_return_benchmark</code> (first symbol,
-          legacy).
-        </p>
-        <label className="mt-6 block text-caption uppercase tracking-[0.18em] text-silver" htmlFor="bench">
-          Benchmark tickers (comma or line-separated)
-        </label>
-        <textarea
-          id="bench"
-          rows={4}
-          className="mt-2 w-full max-w-2xl rounded-md border border-lead/50 bg-deep-space px-4 py-3 font-mono text-body-sm text-starlight outline-none focus:border-ghost-blue"
-          value={benchText}
-          onChange={(e) => {
-            setBenchText(e.target.value);
-            setSuccess(null);
-            setError(null);
-          }}
-        />
-        <p className="mt-2 text-caption text-silver">
-          Parsed ({benchPreview.length}):{" "}
-          {benchPreview.length ? (
-            <code className="text-mercury-blue">{benchPreview.join(", ")}</code>
-          ) : (
-            "—"
-          )}
-          {benchPreview.length > 1 ? (
-            <span className="ml-2 text-silver/80">· composite: {benchPreview.join(" + ")}</span>
-          ) : null}
-        </p>
-      </section>
-
-      <section className="mb-12 rounded-md border border-lead/35 bg-midnight-slate/50 p-6 md:p-8">
         <p className="eyebrow">Fallback sleeve</p>
         <h2 className="mt-2 font-display text-heading-sm font-[420] text-starlight">portfolio.fallback</h2>
         <label className="mt-6 flex cursor-pointer items-center gap-3 text-body-sm text-silver">
@@ -282,7 +245,7 @@ export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: Adap
         </div>
       </section>
 
-      <section className="rounded-md border border-lead/30 bg-graphite/15 p-6">
+      <section className="mb-12 rounded-md border border-lead/30 bg-graphite/15 p-6">
         <p className="eyebrow">Chart baselines</p>
         <p className="mt-2 text-body-sm text-silver">
           Buy-and-hold lines use closes from{" "}
@@ -297,6 +260,43 @@ export function ConfigureUniverseEditor({ initialConfig }: { initialConfig: Adap
             <span>none of the listed candidates</span>
           )}
           . Editing tickers above does not create CSVs.
+        </p>
+      </section>
+
+      <section className="rounded-md border border-lead/35 bg-midnight-slate/50 p-6 md:p-8">
+        <p className="eyebrow">Benchmark</p>
+        <h2 className="mt-2 font-display text-heading-sm font-[420] text-starlight">Excess return vs (equal-weight group)</h2>
+        <p className="mt-3 max-w-3xl text-body-sm text-silver">
+          Same mechanics as a rotation sleeve: daily returns are averaged across these tickers, then each group is
+          scored versus that composite. YAML keys:{" "}
+          <code className="text-caption text-ghost-blue">benchmark.excess_return_benchmark_symbols</code> and{" "}
+          <code className="text-caption text-ghost-blue">benchmark.excess_return_benchmark</code> (first symbol,
+          legacy).
+        </p>
+        <label className="mt-6 block text-caption uppercase tracking-[0.18em] text-silver" htmlFor="bench">
+          Benchmark tickers (comma or line-separated)
+        </label>
+        <textarea
+          id="bench"
+          rows={4}
+          className="mt-2 w-full max-w-2xl rounded-md border border-lead/50 bg-deep-space px-4 py-3 font-mono text-body-sm text-starlight outline-none focus:border-ghost-blue"
+          value={benchText}
+          onChange={(e) => {
+            setBenchText(e.target.value);
+            setSuccess(null);
+            setError(null);
+          }}
+        />
+        <p className="mt-2 text-caption text-silver">
+          Parsed ({benchPreview.length}):{" "}
+          {benchPreview.length ? (
+            <code className="text-mercury-blue">{benchPreview.join(", ")}</code>
+          ) : (
+            "—"
+          )}
+          {benchPreview.length > 1 ? (
+            <span className="ml-2 text-silver/80">· composite: {benchPreview.join(" + ")}</span>
+          ) : null}
         </p>
       </section>
     </>
