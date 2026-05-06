@@ -222,9 +222,9 @@ export function RunBacktestPanel() {
           <p className="eyebrow">Deploy job</p>
           <h2 className="mt-3 font-display text-heading font-[360] text-starlight">Strategy, mode, and launch</h2>
           <p className="mt-4 text-body text-silver">
-            Uses existing daily CSVs under <code className="text-caption text-ghost-blue">data/fmp_daily</code> (worker
-            passes <code className="text-caption text-ghost-blue">--skip-download</code>). The API validates coverage for
-            your range or single decision date plus YAML lookback.
+            Each job runs <code className="text-caption text-ghost-blue">deploy.sh</code> on the server: it downloads any
+            missing Yahoo CSVs into <code className="text-caption text-ghost-blue">data/fmp_daily</code>, then runs your
+            strategy. The first run can take longer while data is fetched.
           </p>
           {strategies.length <= 1 ? (
             <p className="mt-3 text-body-sm text-silver/80">

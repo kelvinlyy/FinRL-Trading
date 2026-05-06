@@ -4,8 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
 from backend.services.backtest_jobs import allowed_modes_public, create_job, get_job, list_recent_jobs
-from backend.services.data_coverage import check_backtest_data_coverage, check_single_date_data_coverage
-from backend.services.strategy_registry import config_path_for_strategy, list_deploy_strategies
+from backend.services.strategy_registry import list_deploy_strategies
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
@@ -45,28 +44,6 @@ def backtest_modes():
 
 @router.post("/run")
 def start_backtest(body: BacktestRunRequest):
-    try:
-        cfg_path = config_path_for_strategy(body.strategy)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    try:
-        if body.mode == "backtest":
-            report = check_backtest_data_coverage(body.start or "", body.end or "", config_path=cfg_path)
-        else:
-            report = check_single_date_data_coverage(body.date or "", config_path=cfg_path)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Server is missing a dependency needed for data checks: {exc}",
-        ) from exc
-
-    if not report.ok:
-        raise HTTPException(status_code=400, detail=report.to_detail_dict())
-
     try:
         job = create_job(
             body.start or "",

@@ -95,10 +95,9 @@ def build_data_overview() -> dict[str, Any]:
         "download": {
             "api_trigger": False,
             "message": (
-                "Price refresh is not started from this API (would run a long blocking Yahoo pipeline). "
-                "From the repo root run: ./deploy.sh --strategy adaptive_rotation --mode backtest "
-                "--start <YYYY-MM-DD> --end <YYYY-MM-DD> and omit --skip-download to repopulate "
-                f"{fmp.relative_dir}/."
+                "When you start a backtest, single-date signal, or paper run from the console, the job runs "
+                "`deploy.sh` which downloads missing Yahoo daily CSVs into this folder (step [2/3]) before the "
+                "strategy runs. The first run may take several minutes while prices are fetched."
             ),
         },
     }

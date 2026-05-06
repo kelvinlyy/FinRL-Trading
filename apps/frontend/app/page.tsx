@@ -56,9 +56,10 @@ export default async function HomePage() {
                 <p className="text-caption uppercase tracking-[0.2em] text-silver">Run</p>
                 <h2 className="font-display text-heading font-[360] text-starlight">Backtest job</h2>
                 <p className="text-subheading text-silver">
-                  Uses on-disk prices in <code className="text-caption text-ghost-blue">data/fmp_daily</code> (no Yahoo
-                  fetch from this UI). Missing tickers or short ranges are reported before the job starts. Outputs go to{" "}
-                  <code className="text-caption text-ghost-blue">src/strategies/output/weights/adaptive_rotation</code>.
+                  The browser job runs the same <code className="text-caption text-ghost-blue">deploy.sh</code> pipeline as
+                  the CLI: it will <span className="text-starlight">download missing daily CSVs</span> into{" "}
+                  <code className="text-caption text-ghost-blue">data/fmp_daily</code> when needed, then write outputs under
+                  your strategy&apos;s <code className="text-caption text-ghost-blue">paths.weights_dir</code> in YAML.
                 </p>
               </div>
               <RunBacktestPanel />

@@ -92,7 +92,8 @@ def main() -> None:
     out_path = job_dir / "deploy.stdout.log"
     err_path = job_dir / "deploy.stderr.log"
 
-    cmd = ["bash", str(DEPLOY_SCRIPT), "--strategy", strategy, "--mode", mode, "--skip-download"]
+    # Omit --skip-download so deploy.sh step [2/3] refreshes Yahoo CSVs under data/fmp_daily when needed.
+    cmd = ["bash", str(DEPLOY_SCRIPT), "--strategy", strategy, "--mode", mode]
     if mode == "backtest":
         cmd += ["--start", start, "--end", end]
     elif mode == "single":
@@ -115,13 +116,13 @@ def main() -> None:
                 env=_build_env(),
                 stdout=out_f,
                 stderr=err_f,
-                timeout=1200,
+                timeout=3600,
             )
             returncode = completed.returncode
     except subprocess.TimeoutExpired:
         returncode = None
         meta["status"] = "failed"
-        meta["error"] = "Backtest timed out after 20 minutes"
+        meta["error"] = "Job timed out after 60 minutes (large download or long backtest)"
         meta["returncode"] = None
         _atomic_write_meta(job_dir, meta)
         with open(err_path, "a", encoding="utf-8", errors="replace") as err_f:
