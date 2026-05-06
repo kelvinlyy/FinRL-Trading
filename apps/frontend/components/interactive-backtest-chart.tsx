@@ -762,9 +762,6 @@ export function InteractiveBacktestChart({ data }: Props) {
                 </g>
               );
             })}
-            <text x={GROUP_LABEL_GUTTER + 4} y="166" className="fill-silver text-[12px]">
-              Hover bars for selected stocks
-            </text>
           </g>
         </svg>
       </div>
