@@ -1,16 +1,50 @@
 version: '3.8'
 
-# Default service below runs the legacy Streamlit/CLI image on port 8501.
-# For the Next + FastAPI console (ports 3000 / 8000), use local dev:
-#   ./scripts/restart-dev-stack.sh
-# Optional Docker profile `console` (commented — needs a custom image or multi-stage build):
-#   docker compose --profile console up
-#   # services would mount the repo and run uvicorn + npm; not wired in-tree to keep this file minimal.
+# Default web stack is now apps/frontend (3000) + apps/backend (8000).
+# Legacy Streamlit service stays under profile "legacy-streamlit" on 8501.
 
 services:
-  finrl-trading:
+  backend:
+    image: python:3.11-slim
+    container_name: finrl-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/workspace
+    environment:
+      - ENVIRONMENT=production
+      - PYTHONPATH=/workspace/apps:/workspace:/workspace/src
+    working_dir: /workspace
+    command: >
+      bash -lc "pip install --no-cache-dir -r requirements.txt &&
+      python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    restart: unless-stopped
+    networks:
+      - finrl-network
+
+  frontend:
+    image: node:20-bullseye
+    container_name: finrl-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/workspace
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://backend:8000
+    working_dir: /workspace/apps/frontend
+    command: >
+      bash -lc "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - finrl-network
+
+  streamlit-legacy:
     build: .
     container_name: finrl-trading-app
+    profiles:
+      - legacy-streamlit
     ports:
       - "8501:8501"
     volumes:
