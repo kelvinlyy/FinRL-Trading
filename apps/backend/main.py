@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.api.routes_backtest import router as backtest_router
 from backend.api.routes_config import router as config_router
 from backend.api.routes_data import router as data_router
+from backend.api.routes_portfolio import router as portfolio_router
 from backend.api.routes_results import router as results_router
 from backend.api.routes_trading import router as trading_router
 
@@ -33,6 +34,7 @@ app.include_router(results_router)
 app.include_router(backtest_router)
 app.include_router(config_router)
 app.include_router(data_router)
+app.include_router(portfolio_router)
 app.include_router(trading_router)
 app.mount("/artifacts", StaticFiles(directory=str(_ARTIFACTS_DIR)), name="artifacts")
 

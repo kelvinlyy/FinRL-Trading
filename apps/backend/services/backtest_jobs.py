@@ -144,6 +144,8 @@ class BacktestJob:
     stderr: str = ""
     error: str | None = None
     result_run_id: str | None = None
+    dry_run: bool | None = None
+    account_name: str | None = None
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
@@ -158,6 +160,8 @@ class BacktestJob:
             "updated_at": self.updated_at,
             "returncode": self.returncode,
             "result_run_id": self.result_run_id,
+            "dry_run": self.dry_run,
+            "account_name": self.account_name,
             "message": self.error,
             "stdout_tail": _truncate(self.stdout) if self.stdout else None,
             "stderr_tail": _truncate(self.stderr) if self.stderr else None,
@@ -199,6 +203,8 @@ def _hydrate_from_disk(job_dir: Path) -> BacktestJob | None:
         strategy=meta.get("strategy", "adaptive_rotation"),
         mode=meta.get("mode", "backtest"),
         single_date=meta.get("single_date"),
+        dry_run=meta.get("dry_run"),
+        account_name=meta.get("account_name"),
         status=meta.get("status", "unknown"),
         created_at=meta.get("created_at", _utc_now()),
         updated_at=meta.get("updated_at", _utc_now()),
@@ -242,6 +248,8 @@ def list_recent_jobs(limit: int = 25) -> list[dict[str, Any]]:
                 "strategy": meta.get("strategy", "adaptive_rotation"),
                 "mode": meta.get("mode", "backtest"),
                 "single_date": meta.get("single_date"),
+                "dry_run": meta.get("dry_run"),
+                "account_name": meta.get("account_name"),
                 "updated_at": meta.get("updated_at"),
                 "result_run_id": meta.get("result_run_id"),
             }
@@ -294,12 +302,14 @@ def create_job(
     strategy: str = "adaptive_rotation",
     mode: str = "backtest",
     single_date: str | None = None,
+    dry_run: bool = False,
+    account_name: str | None = None,
 ) -> BacktestJob:
     from backend.services.strategy_registry import is_known_strategy
 
     mode_norm = (mode or "backtest").strip().lower()
-    if mode_norm not in ("backtest", "single"):
-        raise ValueError("mode must be 'backtest' or 'single'")
+    if mode_norm not in ("backtest", "single", "paper"):
+        raise ValueError("mode must be 'backtest', 'single', or 'paper'")
 
     strat = (strategy or "adaptive_rotation").strip()
     if not is_known_strategy(strat):
@@ -312,10 +322,17 @@ def create_job(
             raise ValueError("start must be before end")
         sd: str | None = None
         meta_start, meta_end = start, end
-    else:
+    elif mode_norm == "single":
         d = (single_date or "").strip()
         if not d:
             raise ValueError("single mode requires 'date' (YYYY-MM-DD)")
+        _validate_iso_date("date", d)
+        meta_start, meta_end = d, d
+        sd = d
+    else:
+        d = (single_date or "").strip()
+        if not d:
+            d = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         _validate_iso_date("date", d)
         meta_start, meta_end = d, d
         sd = d
@@ -330,6 +347,8 @@ def create_job(
         "strategy": strat,
         "mode": mode_norm,
         "single_date": sd,
+        "dry_run": bool(dry_run),
+        "account_name": (account_name or "").strip() or None,
         "status": "queued",
         "created_at": _utc_now(),
         "updated_at": _utc_now(),
@@ -348,4 +367,4 @@ def create_job(
 
 
 def allowed_modes_public() -> list[str]:
-    return ["backtest", "single"]
+    return ["backtest", "single", "paper"]
