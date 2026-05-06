@@ -13,8 +13,6 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
-AUDIT_DIR = PROJECT_ROOT / "src/strategies/output/audit/adaptive_rotation"
 DEPLOY_SCRIPT = PROJECT_ROOT / "deploy.sh"
 META_NAME = "meta.json"
 
@@ -75,6 +73,17 @@ def main() -> None:
         _atomic_write_meta(job_dir, meta)
         sys.exit(1)
 
+    from backend.services.strategy_registry import resolve_strategy_output_dirs
+
+    try:
+        weights_dir, audit_dir = resolve_strategy_output_dirs(strategy)
+    except (ValueError, FileNotFoundError) as exc:
+        meta["status"] = "failed"
+        meta["error"] = str(exc)
+        meta["returncode"] = None
+        _atomic_write_meta(job_dir, meta)
+        sys.exit(1)
+
     meta["status"] = "running"
     meta["error"] = None
     meta["worker_pid"] = os.getpid()
@@ -83,7 +92,7 @@ def main() -> None:
     out_path = job_dir / "deploy.stdout.log"
     err_path = job_dir / "deploy.stderr.log"
 
-    cmd = ["bash", str(DEPLOY_SCRIPT), "--strategy", strategy, "--mode", mode, "--skip-download"]
+    cmd = ["bash", str(DEPLOY_SCRIPT), "--strategy", strategy, "--mode", mode]
     if mode == "backtest":
         cmd += ["--start", start, "--end", end]
     elif mode == "single":
@@ -106,13 +115,13 @@ def main() -> None:
                 env=_build_env(),
                 stdout=out_f,
                 stderr=err_f,
-                timeout=1200,
+                timeout=3600,
             )
             returncode = completed.returncode
     except subprocess.TimeoutExpired:
         returncode = None
         meta["status"] = "failed"
-        meta["error"] = "Backtest timed out after 20 minutes"
+        meta["error"] = "Job timed out after 60 minutes (large download or long backtest)"
         meta["returncode"] = None
         _atomic_write_meta(job_dir, meta)
         with open(err_path, "a", encoding="utf-8", errors="replace") as err_f:
@@ -127,17 +136,17 @@ def main() -> None:
 
     meta["returncode"] = returncode
     if mode == "backtest":
-        run_id = f"{start}_to_{end}"
-        weights_csv = RESULTS_DIR / f"ars_portfolio_weights_{start}_to_{end}.csv"
-        if returncode == 0 and weights_csv.is_file():
+        legacy_run_id = f"{start}_to_{end}"
+        summary_csv = weights_dir / f"backtest_{start}_to_{end}.csv"
+        if returncode == 0 and summary_csv.is_file():
             meta["status"] = "completed"
-            meta["result_run_id"] = run_id
+            meta["result_run_id"] = f"{strategy}__{legacy_run_id}"
             meta["error"] = None
         elif returncode == 0:
             meta["status"] = "failed"
             meta["result_run_id"] = None
             meta["error"] = (
-                f"deploy.sh exited 0 but expected weights CSV was not found ({weights_csv.name}). "
+                f"deploy.sh exited 0 but expected summary CSV was not found ({summary_csv.name}). "
                 "The strategy may have failed before saving outputs."
             )
         else:
@@ -147,8 +156,7 @@ def main() -> None:
     elif mode == "single":
         d = single_date or start
         run_id = f"single_{d}"
-        # ``run_adaptive_rotation_strategy.py --date`` writes ``audit_<date>.json`` (see run_single_date).
-        audit_json = AUDIT_DIR / f"audit_{d}.json"
+        audit_json = audit_dir / f"audit_{d}.json"
         if returncode == 0 and audit_json.is_file():
             meta["status"] = "completed"
             meta["result_run_id"] = run_id
@@ -167,7 +175,7 @@ def main() -> None:
     else:
         d = single_date or start
         run_id = f"paper_{d}"
-        audit_json = RESULTS_DIR / f"execution_{d}.json"
+        audit_json = weights_dir / f"execution_{d}.json"
         if returncode == 0 and audit_json.is_file():
             meta["status"] = "completed"
             meta["result_run_id"] = run_id

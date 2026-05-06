@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DrawdownPoint, EquityPoint, EquitySeriesMeta, GroupActivation, VisualizationData } from "@/lib/types";
 
 type Props = {
@@ -249,9 +249,19 @@ function timelineBarRightX(
 export function InteractiveBacktestChart({ data }: Props) {
   const initialCapital = data.initial_capital ?? 1000;
   const maxTimelineGroups = data.max_timeline_active_groups ?? DEFAULT_MAX_ACTIVE_GROUPS;
+  /** Adaptive Rotation uses GICS-style lanes; RSI and others omit them (`show_group_timeline` false). */
+  const showGroupLanes =
+    data.show_group_timeline === true ||
+    (data.show_group_timeline === undefined && (data.group_timeline?.length ?? 0) > 0);
+  const activeGroupsHeight = showGroupLanes ? groupsHeight : 0;
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   /** When true, series `key` is toggled off in the chart. */
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setHidden({});
+    setHoverIndex(null);
+  }, [data.run?.id]);
 
   const seriesList = useMemo((): EquitySeriesMeta[] => {
     if (data.equity_series && data.equity_series.length > 0) return data.equity_series;
@@ -362,7 +372,8 @@ export function InteractiveBacktestChart({ data }: Props) {
     [data.equity.length, resolveHoverIndex],
   );
 
-  const totalHeight = equityHeight + drawdownHeight + groupsHeight;
+  const totalHeight = equityHeight + drawdownHeight + activeGroupsHeight;
+  const hoverLineBottom = showGroupLanes ? totalHeight - 36 : equityHeight + drawdownHeight - 8;
   const xTicks = data.equity.filter((_, index) => index % Math.ceil(data.equity.length / 6) === 0);
 
   const equityDatesOrdered = useMemo(() => data.equity.map((p) => p.date), [data.equity]);
@@ -400,6 +411,7 @@ export function InteractiveBacktestChart({ data }: Props) {
    * Also uses run.start when before first equity date.
    */
   const preActivationBand = useMemo(() => {
+    if (!showGroupLanes) return null;
     if (geometry.empty || !data.equity.length) return null;
 
     const eq0 = data.equity[0].date;
@@ -458,7 +470,7 @@ export function InteractiveBacktestChart({ data }: Props) {
       caption: `Grey: before meaningful group deployment (${formatDate(meaningfulActivationEnd)}). Chart from ${formatDate(eq0)}; run ${runLabel}.${wfdNote}`,
       title: `Shaded until top-two groups hold meaningful weight (${formatDate(meaningfulActivationEnd)}). First lane tickers may appear earlier on dust rows.${wfdNote}`,
     };
-  }, [geometry, data.equity, data.run?.start, data.weights_first_date, meaningfulActivationEnd]);
+  }, [geometry, data.equity, data.run?.start, data.weights_first_date, meaningfulActivationEnd, showGroupLanes]);
 
   const detailRows = useMemo(() => {
     if (!hovered || !firstPoint) return [];
@@ -492,7 +504,9 @@ export function InteractiveBacktestChart({ data }: Props) {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-caption uppercase tracking-[0.24em] text-silver">Interactive report</p>
-            <h2 className="mt-2 text-[28px] font-[360] text-starlight">Equity, regimes, group rotation, trades.</h2>
+            <h2 className="mt-2 text-[28px] font-[360] text-starlight">
+              {showGroupLanes ? "Equity, regimes, group rotation, trades." : "Equity, regimes, and benchmarks."}
+            </h2>
             <p className="mt-2 text-body-sm text-silver">
               Portfolio scaled from {formatUsd(initialCapital)} initial funding (growth curve matches backtest normalization).
             </p>
@@ -619,7 +633,7 @@ export function InteractiveBacktestChart({ data }: Props) {
                   x1={geometry.x(toDateValue(hovered.date))}
                   x2={geometry.x(toDateValue(hovered.date))}
                   y1={margin.top}
-                  y2={totalHeight - 36}
+                  y2={hoverLineBottom}
                   stroke="#ededf3"
                   strokeOpacity="0.35"
                   strokeDasharray="4 4"
@@ -695,74 +709,76 @@ export function InteractiveBacktestChart({ data }: Props) {
             </text>
           </g>
 
-          <g transform={`translate(0 ${equityHeight + drawdownHeight})`}>
-            {preActivationBand && preActivationBand.groups.width >= 2 ? (
-              <g>
-                <rect
-                  x={preActivationBand.groups.x}
-                  y={10}
-                  width={preActivationBand.groups.width}
-                  height={groupsHeight - 28}
-                  fill="rgba(65, 67, 88, 0.42)"
-                  stroke="rgba(140, 140, 155, 0.35)"
-                  strokeWidth={1}
-                >
-                  <title>{preActivationBand.title}</title>
-                </rect>
-                <text
-                  x={preActivationBand.groups.x + 8}
-                  y={26}
-                  className="fill-starlight text-[11px] font-[480]"
-                  opacity={0.95}
-                >
-                  Before first group activation
-                </text>
-              </g>
-            ) : null}
-            {!geometry.empty ? (
-              <line
-                x1={GROUP_LABEL_GUTTER}
-                x2={GROUP_LABEL_GUTTER}
-                y1={12}
-                y2={groupsHeight - 18}
-                stroke="#ededf3"
-                strokeOpacity="0.08"
-              />
-            ) : null}
-            {groups.map((group, groupIndex) => {
-              const y = 30 + groupIndex * 45;
-              const segments = groupActivationSegments[group] ?? [];
-              return (
-                <g key={group}>
-                  <text
-                    x={14}
-                    y={y + 12}
-                    className="fill-silver text-[12px]"
-                    textAnchor="start"
+          {showGroupLanes ? (
+            <g transform={`translate(0 ${equityHeight + drawdownHeight})`}>
+              {preActivationBand && preActivationBand.groups.width >= 2 ? (
+                <g>
+                  <rect
+                    x={preActivationBand.groups.x}
+                    y={10}
+                    width={preActivationBand.groups.width}
+                    height={groupsHeight - 28}
+                    fill="rgba(65, 67, 88, 0.42)"
+                    stroke="rgba(140, 140, 155, 0.35)"
+                    strokeWidth={1}
                   >
-                    {group}
+                    <title>{preActivationBand.title}</title>
+                  </rect>
+                  <text
+                    x={preActivationBand.groups.x + 8}
+                    y={26}
+                    className="fill-starlight text-[11px] font-[480]"
+                    opacity={0.95}
+                  >
+                    Before first group activation
                   </text>
-                  {segments.map((seg) => {
-                    const x0 = geometry.groupX(seg.start);
-                    const x1 = timelineBarRightX(seg.end, data.equity, geometry.groupX);
-                    return (
-                      <rect
-                        key={`${group}-${seg.start}-${seg.end}`}
-                        x={x0}
-                        y={y}
-                        width={Math.max(4, x1 - x0)}
-                        height="18"
-                        fill={groupIndex === 0 ? "#5266eb" : groupIndex === 1 ? "#8b7654" : "#5fa58c"}
-                        opacity="0.75"
-                      >
-                        <title>{`${formatDate(seg.start)} → ${formatDate(seg.end)} · ${group}: ${seg.held_stocks.join(", ")}`}</title>
-                      </rect>
-                    );
-                  })}
                 </g>
-              );
-            })}
-          </g>
+              ) : null}
+              {!geometry.empty ? (
+                <line
+                  x1={GROUP_LABEL_GUTTER}
+                  x2={GROUP_LABEL_GUTTER}
+                  y1={12}
+                  y2={groupsHeight - 18}
+                  stroke="#ededf3"
+                  strokeOpacity="0.08"
+                />
+              ) : null}
+              {groups.map((group, groupIndex) => {
+                const y = 30 + groupIndex * 45;
+                const segments = groupActivationSegments[group] ?? [];
+                return (
+                  <g key={group}>
+                    <text
+                      x={14}
+                      y={y + 12}
+                      className="fill-silver text-[12px]"
+                      textAnchor="start"
+                    >
+                      {group}
+                    </text>
+                    {segments.map((seg) => {
+                      const x0 = geometry.groupX(seg.start);
+                      const x1 = timelineBarRightX(seg.end, data.equity, geometry.groupX);
+                      return (
+                        <rect
+                          key={`${group}-${seg.start}-${seg.end}`}
+                          x={x0}
+                          y={y}
+                          width={Math.max(4, x1 - x0)}
+                          height="18"
+                          fill={groupIndex === 0 ? "#5266eb" : groupIndex === 1 ? "#8b7654" : "#5fa58c"}
+                          opacity="0.75"
+                        >
+                          <title>{`${formatDate(seg.start)} → ${formatDate(seg.end)} · ${group}: ${seg.held_stocks.join(", ")}`}</title>
+                        </rect>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+            </g>
+          ) : null}
         </svg>
       </div>
 
