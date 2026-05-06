@@ -71,7 +71,7 @@ The **browser command center** lives under `apps/` and talks to the same repo da
 
 From the repo root, `./scripts/restart-dev-stack.sh` starts both processes. Open `http://localhost:3000` (hard-refresh after restarts). API docs: `http://127.0.0.1:8000/docs`.
 
-The Streamlit dashboard (`streamlit run src/web/app.py`, default **8501**) remains available for the legacy layout; new console work targets `apps/frontend` + `apps/backend`.
+The Streamlit dashboard (`streamlit run src/web/app.py`, default **8501**) is now a **legacy notice page**. Active web features are integrated in `apps/frontend` + `apps/backend`.
 
 ```
 finrl-trading/
