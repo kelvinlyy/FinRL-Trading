@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.services.backtest_jobs import create_job, get_job, list_recent_jobs
-
+from backend.services.data_coverage import check_single_date_data_coverage
+from backend.services.strategy_registry import config_path_for_strategy
 from backend.services.trading_status import trading_status_public
 
 router = APIRouter(prefix="/api/trading", tags=["trading"])
@@ -30,12 +33,25 @@ class TradingRunRequest(BaseModel):
 @router.post("/run")
 def start_trading_run(body: TradingRunRequest):
     try:
+        cfg_path = config_path_for_strategy(body.strategy)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    decision_date = (body.date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        report = check_single_date_data_coverage(decision_date, config_path=cfg_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not report.ok:
+        raise HTTPException(status_code=400, detail=report.to_detail_dict())
+    try:
         job = create_job(
-            start=body.date or "",
-            end=body.date or "",
+            start=decision_date,
+            end=decision_date,
             strategy=body.strategy,
             mode="paper",
-            single_date=body.date,
+            single_date=decision_date,
             dry_run=body.dry_run,
             account_name=body.account_name,
         )

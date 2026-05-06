@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getTradingJob, startTradingRun } from "@/lib/api";
-import type { BacktestJob } from "@/lib/types";
+import { getTradingJob, listDeployStrategies, startTradingRun } from "@/lib/api";
+import type { BacktestJob, DeployStrategyRow } from "@/lib/types";
 
 function isTerminal(status: string) {
   return status === "completed" || status === "failed";
 }
 
 export function TradingExecutionPanel() {
+  const [strategies, setStrategies] = useState<DeployStrategyRow[]>([]);
+  const [strategy, setStrategy] = useState("adaptive_rotation");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [dryRun, setDryRun] = useState(true);
   const [job, setJob] = useState<BacktestJob | null>(null);
@@ -16,6 +18,15 @@ export function TradingExecutionPanel() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    void listDeployStrategies().then((rows) => {
+      setStrategies(rows);
+      if (rows.length) {
+        setStrategy((prev) => (rows.some((r) => r.name === prev) ? prev : rows[0].name));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -49,7 +60,7 @@ export function TradingExecutionPanel() {
     setJob(null);
     try {
       const res = await startTradingRun({
-        strategy: "adaptive_rotation",
+        strategy,
         date,
         dry_run: dryRun,
       });
@@ -64,7 +75,21 @@ export function TradingExecutionPanel() {
   return (
     <section className="panel space-y-6 rounded-md p-8">
       <h2 className="font-display text-heading-sm font-[360] text-starlight">Paper execution</h2>
-      <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-3 md:items-end">
+      <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-4 md:items-end">
+        <label className="flex flex-col gap-2 text-body-sm text-silver">
+          Strategy
+          <select
+            value={strategy}
+            onChange={(e) => setStrategy(e.target.value)}
+            className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight"
+          >
+            {(strategies.length ? strategies : [{ name: "adaptive_rotation", config: "", runner: "" }]).map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex flex-col gap-2 text-body-sm text-silver">
           Decision date
           <input
