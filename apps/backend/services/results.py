@@ -9,13 +9,15 @@ from typing import Any
 import pandas as pd
 
 from backend.services.adaptive_yaml import load_adaptive_rotation_public
+from backend.services.strategy_registry import list_deploy_strategies, resolve_strategy_output_dirs
 
 # apps/backend/services/ -> repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-RESULTS_DIR = PROJECT_ROOT / "src/strategies/output/weights/adaptive_rotation"
 DATA_DIR = PROJECT_ROOT / "data/fmp_daily"
-RESULT_RE = re.compile(r"enhanced_backtest_(?P<start>.+)_to_(?P<end>.+)\.png$")
-WEIGHTS_RE = re.compile(r"^ars_portfolio_weights_(?P<start>.+)_to_(?P<end>.+)\.csv$")
+# e.g. ars_portfolio_weights_2023-01-01_to_2024-12-31.csv, rsi_portfolio_weights_...
+WEIGHTS_FILE_RE = re.compile(
+    r"^(?P<prefix>[a-z0-9]+)_portfolio_weights_(?P<start>.+)_to_(?P<end>.+)\.csv$"
+)
 
 GROUP_MEMBERS = {
     "Growth Tech": ["AAPL", "MSFT", "NVDA", "META", "AMZN", "GOOGL", "TSLA"],
@@ -35,6 +37,8 @@ _MIN_MEANINGFUL_GROUP_INVESTED = 0.06
 @dataclass(frozen=True)
 class BacktestRun:
     id: str
+    strategy_slug: str
+    legacy_id: str
     start: str
     end: str
     chart_path: Path
@@ -44,44 +48,38 @@ class BacktestRun:
 
     @property
     def label(self) -> str:
-        return f"{self.start} to {self.end}"
+        return f"{self.strategy_slug}: {self.start} to {self.end}"
 
 
-def _run_from_chart(chart_path: Path) -> BacktestRun | None:
-    match = RESULT_RE.match(chart_path.name)
+def _pick_chart_png(weights_dir: Path, legacy_id: str) -> Path:
+    """Adaptive writes ``enhanced_backtest_*.png``; RSI/simple runners often write ``backtest_*.png``."""
+    for name in (f"enhanced_backtest_{legacy_id}.png", f"backtest_{legacy_id}.png"):
+        p = weights_dir / name
+        if p.exists():
+            return p
+    return weights_dir / f"enhanced_backtest_{legacy_id}.png"
+
+
+def _run_from_weights(weights_path: Path, strategy_slug: str) -> BacktestRun | None:
+    match = WEIGHTS_FILE_RE.match(weights_path.name)
     if not match:
         return None
 
     start = match.group("start")
     end = match.group("end")
-    run_id = f"{start}_to_{end}"
+    legacy_id = f"{start}_to_{end}"
+    weights_dir = weights_path.parent
+    chart_path = _pick_chart_png(weights_dir, legacy_id)
+    composite_id = f"{strategy_slug}__{legacy_id}"
     return BacktestRun(
-        id=run_id,
+        id=composite_id,
+        strategy_slug=strategy_slug,
+        legacy_id=legacy_id,
         start=start,
         end=end,
         chart_path=chart_path,
-        trade_log_path=chart_path.with_name(f"trade_log_{run_id}.csv"),
-        summary_path=chart_path.with_name(f"backtest_{run_id}.csv"),
-        weights_path=chart_path.with_name(f"ars_portfolio_weights_{run_id}.csv"),
-    )
-
-
-def _run_from_weights(weights_path: Path) -> BacktestRun | None:
-    match = WEIGHTS_RE.match(weights_path.name)
-    if not match:
-        return None
-
-    start = match.group("start")
-    end = match.group("end")
-    run_id = f"{start}_to_{end}"
-    chart_path = RESULTS_DIR / f"enhanced_backtest_{run_id}.png"
-    return BacktestRun(
-        id=run_id,
-        start=start,
-        end=end,
-        chart_path=chart_path,
-        trade_log_path=weights_path.with_name(f"trade_log_{run_id}.csv"),
-        summary_path=weights_path.with_name(f"backtest_{run_id}.csv"),
+        trade_log_path=weights_dir / f"trade_log_{legacy_id}.csv",
+        summary_path=weights_dir / f"backtest_{legacy_id}.csv",
         weights_path=weights_path,
     )
 
@@ -93,28 +91,34 @@ def _run_mtime(run: BacktestRun) -> float:
 
 
 def list_runs() -> list[BacktestRun]:
-    if not RESULTS_DIR.exists():
-        return []
-
     by_id: dict[str, BacktestRun] = {}
-    for weights_path in RESULTS_DIR.glob("ars_portfolio_weights_*_to_*.csv"):
-        run = _run_from_weights(weights_path)
-        if run:
-            by_id[run.id] = run
-    for chart_path in RESULTS_DIR.glob("enhanced_backtest_*_to_*.png"):
-        run = _run_from_chart(chart_path)
-        if run and run.id not in by_id:
-            by_id[run.id] = run
+    for row in list_deploy_strategies():
+        slug = row["name"]
+        weights_dir, _ = resolve_strategy_output_dirs(slug)
+        if not weights_dir.is_dir():
+            continue
+        for weights_path in weights_dir.glob("*_portfolio_weights_*_to_*.csv"):
+            run = _run_from_weights(weights_path, slug)
+            if run:
+                by_id[run.id] = run
 
     runs = list(by_id.values())
     return sorted(runs, key=_run_mtime, reverse=True)
 
 
 def get_run(run_id: str) -> BacktestRun | None:
-    for run in list_runs():
+    runs = list_runs()
+    for run in runs:
         if run.id == run_id:
             return run
-    return None
+    legacy_matches = [r for r in runs if r.legacy_id == run_id]
+    if not legacy_matches:
+        return None
+    for slug in ("adaptive_rotation",):
+        for run in legacy_matches:
+            if run.strategy_slug == slug:
+                return run
+    return legacy_matches[0]
 
 
 def latest_run() -> BacktestRun | None:
@@ -366,6 +370,8 @@ def run_metadata(run: BacktestRun) -> dict[str, Any]:
     chart_url = f"/api/results/{run.id}/chart" if run.chart_path.exists() else ""
     return {
         "id": run.id,
+        "strategy": run.strategy_slug,
+        "legacy_id": run.legacy_id,
         "label": run.label,
         "start": run.start,
         "end": run.end,

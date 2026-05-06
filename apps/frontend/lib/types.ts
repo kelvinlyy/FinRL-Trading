@@ -1,5 +1,8 @@
 export type BacktestRun = {
   id: string;
+  /** Deploy strategy id from deploy.sh (e.g. adaptive_rotation, rsi_reversion). */
+  strategy?: string;
+  legacy_id?: string;
   label: string;
   start: string;
   end: string;
