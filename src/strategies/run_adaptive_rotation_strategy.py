@@ -441,6 +441,18 @@ def run_backtest(config_path: str, start_date: str, end_date: str,
         except Exception as e:
             print(f"\nWarning: Enhanced chart generation failed: {e}")
 
+    else:
+        # deploy.sh / job_worker expect backtest_{start}_to_{end}.csv even when every day errored
+        # or no weekly rebalance occurred in-range (otherwise the job shows "failed" despite exit 0).
+        print("\nNo weekly rebalance rows in this window — writing stub summary CSV for tooling.")
+        weights_dir = Path(config.paths.weights_dir)
+        weights_dir.mkdir(parents=True, exist_ok=True)
+        summary_stub = weights_dir / f"backtest_{start_date}_to_{end_date}.csv"
+        pd.DataFrame(columns=["date", "invested", "cash", "regime", "num_assets"]).to_csv(
+            summary_stub, index=False
+        )
+        print(f"Stub summary saved to: {summary_stub}")
+
     return results
 
 

@@ -141,6 +141,11 @@ def run_backtest(
 
     if not rows_detail:
         print("No backtest rows produced (check date range and data).")
+        summary_file = weights_dir / f"backtest_{start_date}_to_{end_date}.csv"
+        pd.DataFrame(columns=["date", "invested", "cash", "regime", "num_assets"]).to_csv(
+            summary_file, index=False
+        )
+        print(f"Wrote stub summary: {summary_file}")
         return
 
     summary_df = pd.DataFrame(rows_summary)
