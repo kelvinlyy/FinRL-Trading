@@ -22,6 +22,7 @@ ACCOUNT=""               # Alpaca account name (paper mode)
 # Format: strategy_name|config_path|runner_path
 STRATEGIES="
 adaptive_rotation|src/strategies/AdaptiveRotationConf_v1.2.1.yaml|src/strategies/run_adaptive_rotation_strategy.py
+rsi_reversion|src/strategies/RSIReversionConf.yaml|src/strategies/run_rsi_reversion_strategy.py
 "
 
 resolve_strategy() {
@@ -346,150 +347,16 @@ elif [[ "$MODE" == "single" ]]; then
 
 elif [[ "$MODE" == "paper" ]]; then
     # ── Paper trading mode ─────────────────────────────
-    # Step 3a: Generate signal, then 3b: Execute on Alpaca
-    python3 - "$CONFIG" "$DATA_DIR" "$SINGLE_DATE" "$DRY_RUN" "$ACCOUNT" <<'PYEOF'
-import sys, json
-from pathlib import Path
-from datetime import datetime
-
-config_path = sys.argv[1]
-data_dir = sys.argv[2]
-as_of_date = sys.argv[3]
-dry_run = sys.argv[4].lower() == "true"
-account_name = sys.argv[5] if sys.argv[5] else None
-
-# Add project root to path
-project_root = Path(__file__).resolve().parent if Path(__file__).exists() else Path.cwd()
-sys.path.insert(0, str(project_root))
-
-# ── 3a: Generate target weights ──────────────────────
-print(f"\n--- Step 3a: Generating signal for {as_of_date} ---\n")
-
-from src.strategies.adaptive_rotation import AdaptiveRotationEngine
-from src.strategies.adaptive_rotation.data_preprocessor import DataPreprocessor
-from src.strategies.adaptive_rotation.config_loader import load_config
-
-config = load_config(config_path)
-preprocessor = DataPreprocessor(config)
-preprocessor.load_and_prepare(data_dir=data_dir)
-
-engine = AdaptiveRotationEngine(config=config_path, data_preprocessor=preprocessor)
-config = engine.get_config()
-
-raw_data = preprocessor.get_data_as_of(as_of_date)
-price_data = {symbol: df['close'] for symbol, df in raw_data.items()}
-
-weights, audit_log = engine.run(
-    price_data=price_data,
-    as_of_date=as_of_date
-)
-
-print(f"  Market Regime: {weights.regime_state}")
-print(f"  Total Invested: {weights.get_invested_weight():.2%}")
-print(f"  Cash Position:  {weights.cash_weight:.2%}")
-print(f"\n  Target Portfolio ({len(weights.weights)} assets):")
-print("  " + "-" * 36)
-for symbol, weight in sorted(weights.weights.items(), key=lambda x: x[1], reverse=True):
-    print(f"    {symbol:8s}: {weight:7.2%}")
-
-target_weights = weights.weights
-
-if not target_weights:
-    print("\n  No positions to trade. Exiting.")
-    sys.exit(0)
-
-# Save signal to file
-output_dir = Path(config.paths.weights_dir)
-output_dir.mkdir(parents=True, exist_ok=True)
-signal_file = output_dir / f"signal_{as_of_date}.json"
-signal_data = {
-    "date": as_of_date,
-    "regime": weights.regime_state,
-    "invested": weights.get_invested_weight(),
-    "cash": weights.cash_weight,
-    "weights": target_weights,
-}
-with open(signal_file, "w") as f:
-    json.dump(signal_data, f, indent=2, default=str)
-print(f"\n  Signal saved to: {signal_file}")
-
-# ── 3b: Execute on Alpaca paper trading ──────────────
-print(f"\n--- Step 3b: {'[DRY RUN] ' if dry_run else ''}Executing on Alpaca Paper Trading ---\n")
-
-from src.trading.alpaca_manager import AlpacaManager, create_alpaca_account_from_env
-
-if account_name:
-    account = create_alpaca_account_from_env(account_name)
-else:
-    account = create_alpaca_account_from_env()
-
-if not account.is_paper:
-    print("  ERROR: Account is NOT paper trading!")
-    print(f"  Base URL: {account.base_url}")
-    print("  Refusing to execute on live account via deploy.sh")
-    print("  Use the Alpaca dashboard or a dedicated live trading script instead")
-    sys.exit(1)
-
-manager = AlpacaManager([account])
-
-# Show account status
-account_info = manager.get_account_info()
-print(f"  Account:        {account.name} (paper)")
-print(f"  Equity:         ${float(account_info.get('equity', 0)):,.2f}")
-print(f"  Cash:           ${float(account_info.get('cash', 0)):,.2f}")
-print(f"  Portfolio Value: ${float(account_info.get('portfolio_value', 0)):,.2f}")
-
-positions = manager.get_positions()
-print(f"  Current Positions: {len(positions)}")
-if positions:
-    for pos in positions:
-        sym = pos.get("symbol", "?")
-        qty = pos.get("qty", 0)
-        mv  = float(pos.get("market_value", 0))
-        print(f"    {sym:8s}: {qty} shares (${mv:,.2f})")
-
-print(f"\n  Target weights: {json.dumps(target_weights, indent=4)}")
-
-# Execute rebalance
-result = manager.execute_portfolio_rebalance(
-    target_weights=target_weights,
-    account_name=account.name,
-    dry_run=dry_run,
-    market_closed_action='skip'
-)
-
-print(f"\n  {'[DRY RUN] ' if dry_run else ''}Rebalance result:")
-if dry_run or result.get("orders_plan"):
-    orders_plan = result.get("orders_plan", result)
-    print(f"    Plan: {json.dumps(orders_plan, indent=4, default=str)}")
-else:
-    n_placed = result.get("orders_placed", 0)
-    orders = result.get("orders", [])
-    print(f"    Orders placed: {n_placed}")
-    for o in orders:
-        if isinstance(o, dict):
-            side = o.get("side", "?")
-            sym = o.get("symbol", "?")
-            qty = o.get("qty", o.get("quantity", "?"))
-        else:
-            side = getattr(o, "side", "?")
-            sym = getattr(o, "symbol", "?")
-            qty = getattr(o, "qty", getattr(o, "quantity", "?"))
-        print(f"      {str(side).upper():5s} {sym:8s} x {qty}")
-
-# Save execution log
-exec_file = output_dir / f"execution_{as_of_date}.json"
-exec_data = {
-    "date": as_of_date,
-    "dry_run": dry_run,
-    "account": account.name,
-    "signal": signal_data,
-    "result": result,
-}
-with open(exec_file, "w") as f:
-    json.dump(exec_data, f, indent=2, default=str)
-print(f"\n  Execution log saved to: {exec_file}")
-PYEOF
+    # Run registered strategy runner (writes signal JSON), then Alpaca via helper script.
+    PAPER_DRY="false"
+    [[ "$DRY_RUN" == true ]] && PAPER_DRY="true"
+    python3 "$PROJECT_ROOT/scripts/paper_trade_generic.py" \
+        --runner "$RUNNER" \
+        --config "$CONFIG" \
+        --data-dir "$DATA_DIR" \
+        --date "$SINGLE_DATE" \
+        --dry-run "$PAPER_DRY" \
+        --account "${ACCOUNT:-}"
 
 else
     echo "Error: unknown mode '$MODE' (use backtest | single | paper)"

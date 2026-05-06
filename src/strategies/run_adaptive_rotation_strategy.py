@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -90,7 +91,21 @@ def run_single_date(config_path: str, as_of_date: str, data_dir: str = None):
     audit_file = output_dir / f"audit_{as_of_date}.json"
     audit_log.to_json(str(audit_file))
     print(f"\nAudit log saved to: {audit_file}")
-    
+
+    weights_dir = Path(config.paths.weights_dir)
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    signal_file = weights_dir / f"signal_{as_of_date}.json"
+    signal_data = {
+        "date": as_of_date,
+        "regime": weights.regime_state,
+        "invested": weights.get_invested_weight(),
+        "cash": weights.cash_weight,
+        "weights": weights.weights,
+    }
+    with open(signal_file, "w", encoding="utf-8") as f:
+        json.dump(signal_data, f, indent=2, default=str)
+    print(f"Signal file saved to: {signal_file}")
+
     return weights, audit_log
 
 
