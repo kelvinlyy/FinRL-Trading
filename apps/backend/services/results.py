@@ -474,6 +474,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
             "equity": [],
             "equity_series": [],
             "drawdown": [],
+            "regimes": [],
             "group_timeline": [],
             "trades": read_trade_log(run),
         }
