@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BacktestProgressBar } from "@/components/backtest-progress-bar";
-import { ApiRequestError, DataCoverageError, getBacktestJob, listDeployStrategies, startBacktestRun } from "@/lib/api";
+import { ApiRequestError, DataCoverageError, getBacktestJob, startBacktestRun } from "@/lib/api";
 import type { BacktestJob, DataCoverageDetail, DeployStrategyRow } from "@/lib/types";
+
+export type RunBacktestPanelProps = {
+  /** Strategy rows from ``listDeployStrategies`` (parent fetch avoids duplicate requests). */
+  deployStrategies: DeployStrategyRow[];
+  deployStrategy: string;
+  onDeployStrategyChange: (name: string) => void;
+};
 
 function DataGapPanel({ detail }: { detail: DataCoverageDetail }) {
   return (
@@ -89,9 +96,24 @@ function forgetActiveJobId() {
   }
 }
 
-export function RunBacktestPanel() {
-  const [strategies, setStrategies] = useState<DeployStrategyRow[]>([]);
-  const [strategy, setStrategy] = useState("adaptive_rotation");
+export function RunBacktestPanel({
+  deployStrategies,
+  deployStrategy,
+  onDeployStrategyChange,
+}: RunBacktestPanelProps) {
+  const strategy = deployStrategy;
+  const setStrategy = onDeployStrategyChange;
+  const strategies = deployStrategies;
+
+  const strategySelectRows = useMemo(() => {
+    const base: DeployStrategyRow[] = strategies.length
+      ? strategies
+      : [{ name: "adaptive_rotation", config: "", runner: "" }];
+    if (strategy && !base.some((r) => r.name === strategy)) {
+      return [{ name: strategy, config: "", runner: "" }, ...base];
+    }
+    return base;
+  }, [strategies, strategy]);
   const [mode, setMode] = useState<"backtest" | "single">("backtest");
   const [singleDate, setSingleDate] = useState("2024-12-31");
   const [start, setStart] = useState("2024-01-01");
@@ -114,15 +136,6 @@ export function RunBacktestPanel() {
   useEffect(() => {
     return () => clearPoll();
   }, [clearPoll]);
-
-  useEffect(() => {
-    void listDeployStrategies().then((rows) => {
-      setStrategies(rows);
-      if (rows.length) {
-        setStrategy((prev) => (rows.some((r) => r.name === prev) ? prev : rows[0].name));
-      }
-    });
-  }, []);
 
   useEffect(() => {
     try {
@@ -218,9 +231,24 @@ export function RunBacktestPanel() {
   return (
     <div className="space-y-10">
       <form onSubmit={onSubmit} className="panel space-y-8 rounded-md p-8 md:p-10">
+        <label className="flex max-w-2xl flex-col gap-2 text-body-sm text-silver">
+          Strategy
+          <select
+            value={strategy}
+            onChange={(ev) => setStrategy(ev.target.value)}
+            className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
+          >
+            {(strategySelectRows).map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div>
           <p className="eyebrow">Deploy job</p>
-          <h2 className="mt-3 font-display text-heading font-[360] text-starlight">Strategy, mode, and launch</h2>
+          <h2 className="mt-3 font-display text-heading font-[360] text-starlight">Mode, dates, and launch</h2>
           <p className="mt-4 text-body text-silver">
             Each job runs <code className="text-caption text-ghost-blue">deploy.sh</code> on the server: it downloads any
             missing Yahoo CSVs into <code className="text-caption text-ghost-blue">data/fmp_daily</code>, then runs your
@@ -239,33 +267,17 @@ export function RunBacktestPanel() {
           </p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <label className="flex flex-col gap-2 text-body-sm text-silver">
-            Strategy
-            <select
-              value={strategy}
-              onChange={(ev) => setStrategy(ev.target.value)}
-              className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
-            >
-              {(strategies.length ? strategies : [{ name: "adaptive_rotation", config: "", runner: "" }]).map((s) => (
-                <option key={s.name} value={s.name}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-2 text-body-sm text-silver">
-            Mode
-            <select
-              value={mode}
-              onChange={(ev) => setMode(ev.target.value as "backtest" | "single")}
-              className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
-            >
-              <option value="backtest">Backtest (date range)</option>
-              <option value="single">Single date (signal JSON)</option>
-            </select>
-          </label>
-        </div>
+        <label className="flex max-w-md flex-col gap-2 text-body-sm text-silver">
+          Mode
+          <select
+            value={mode}
+            onChange={(ev) => setMode(ev.target.value as "backtest" | "single")}
+            className="rounded-md border border-lead/50 bg-deep-space px-4 py-3 text-starlight outline-none focus:border-mercury-blue"
+          >
+            <option value="backtest">Backtest (date range)</option>
+            <option value="single">Single date (signal JSON)</option>
+          </select>
+        </label>
 
         {mode === "backtest" ? (
           <div className="grid gap-6 md:grid-cols-2">

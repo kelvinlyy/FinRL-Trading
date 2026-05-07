@@ -271,18 +271,19 @@ export function InteractiveBacktestChart({ data }: Props) {
   const seriesOn = (key: string) => !hidden[key];
 
   const groupTimeline = useMemo(
-    () => enforceTimelineMaxGroups(data.group_timeline, maxTimelineGroups),
+    () => enforceTimelineMaxGroups(data.group_timeline ?? [], maxTimelineGroups),
     [data.group_timeline, maxTimelineGroups],
   );
 
   const drawdownSeries = useMemo((): DrawdownPoint[] => {
     const eq = data.equity;
     if (!eq.length) return [];
+    const dd = data.drawdown ?? [];
     const aligned =
-      data.drawdown.length === eq.length &&
-      data.drawdown.every((d, i) => d.date === eq[i]?.date);
+      dd.length === eq.length &&
+      dd.every((d, i) => d.date === eq[i]?.date);
     if (aligned) {
-      return data.drawdown;
+      return dd;
     }
     return drawdownFromEquity(eq);
   }, [data.equity, data.drawdown]);
@@ -551,7 +552,7 @@ export function InteractiveBacktestChart({ data }: Props) {
           onMouseLeave={() => setHoverIndex(null)}
         >
           <g>
-            {data.regimes.map((regime) => {
+            {(data.regimes ?? []).map((regime) => {
               const x0 = geometry.x(toDateValue(regime.start));
               const x1 = geometry.x(toDateValue(regime.end));
               return (

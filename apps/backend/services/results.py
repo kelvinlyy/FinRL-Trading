@@ -21,6 +21,13 @@ DATA_DIR = PROJECT_ROOT / "data/fmp_daily"
 WEIGHTS_FILE_RE = re.compile(
     r"^(?P<prefix>[a-z0-9]+)_portfolio_weights_(?P<start>.+)_to_(?P<end>.+)\.csv$"
 )
+# Summary-only runs (e.g. stub backtest CSV when no weekly rows) still need a composite id.
+BACKTEST_SUMMARY_RE = re.compile(r"^backtest_(?P<start>.+?)_to_(?P<end>.+)\.csv$")
+# ``*_portfolio_weights_*`` filename prefix per deploy slug (must match runners on disk).
+_SLUG_TO_WEIGHTS_PREFIX: dict[str, str] = {
+    "adaptive_rotation": "ars",
+    "rsi_reversion": "rsi",
+}
 
 GROUP_MEMBERS = {
     "Growth Tech": ["AAPL", "MSFT", "NVDA", "META", "AMZN", "GOOGL", "TSLA"],
@@ -87,6 +94,37 @@ def _run_from_weights(weights_path: Path, strategy_slug: str) -> BacktestRun | N
     )
 
 
+def _run_from_summary_stub(summary_path: Path, strategy_slug: str, weights_prefix: str) -> BacktestRun | None:
+    """
+    Discover a run from ``backtest_{start}_to_{end}.csv`` when no ``{prefix}_portfolio_weights_*.csv`` exists.
+
+    This matches stub-only adaptive/RSI outputs so the results index is non-empty after a "successful" web job.
+    """
+    m = BACKTEST_SUMMARY_RE.match(summary_path.name)
+    if not m:
+        return None
+    start = m.group("start")
+    end = m.group("end")
+    legacy_id = f"{start}_to_{end}"
+    weights_dir = summary_path.parent
+    detail_weights = weights_dir / f"{weights_prefix}_portfolio_weights_{legacy_id}.csv"
+    if detail_weights.exists():
+        return None
+    composite_id = f"{strategy_slug}__{legacy_id}"
+    chart_path = _pick_chart_png(weights_dir, legacy_id)
+    return BacktestRun(
+        id=composite_id,
+        strategy_slug=strategy_slug,
+        legacy_id=legacy_id,
+        start=start,
+        end=end,
+        chart_path=chart_path,
+        trade_log_path=weights_dir / f"trade_log_{legacy_id}.csv",
+        summary_path=summary_path,
+        weights_path=detail_weights,
+    )
+
+
 def _run_mtime(run: BacktestRun) -> float:
     paths = [run.weights_path, run.summary_path, run.chart_path]
     mtimes = [p.stat().st_mtime for p in paths if p.exists()]
@@ -104,6 +142,13 @@ def list_runs() -> list[BacktestRun]:
             run = _run_from_weights(weights_path, slug)
             if run:
                 by_id[run.id] = run
+
+        prefix = _SLUG_TO_WEIGHTS_PREFIX.get(slug)
+        if prefix:
+            for summary_path in weights_dir.glob("backtest_*_to_*.csv"):
+                stub = _run_from_summary_stub(summary_path, slug, prefix)
+                if stub and stub.id not in by_id:
+                    by_id[stub.id] = stub
 
     runs = list(by_id.values())
     return sorted(runs, key=_run_mtime, reverse=True)
@@ -429,6 +474,7 @@ def visualization_data(run: BacktestRun) -> dict[str, Any]:
             "equity": [],
             "equity_series": [],
             "drawdown": [],
+            "regimes": [],
             "group_timeline": [],
             "trades": read_trade_log(run),
         }
